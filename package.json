@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.1.0",
-    "@wuapidev/sdk": "^0.3.0",
+    "@wuapidev/sdk": "^0.4.0",
     "zod": "^4.2.0"
   },
   "devDependencies": {
