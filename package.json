@@ -1,0 +1,68 @@
+{
+  "name": "@wuapidev/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for wuapi, a WhatsApp API for developers. Lets Claude, Cursor, VS Code and other MCP clients send messages and manage linked numbers, chats, contacts, groups, webhooks, projects and invitations with your API key.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "wuapi-mcp": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "whatsapp",
+    "whatsapp-api",
+    "ai-agents",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://wuapi.dev/docs/mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wuapidev/wuapi-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wuapidev/wuapi-mcp/issues"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.1.0",
+    "@wuapidev/sdk": "^0.3.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.1.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.14"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
