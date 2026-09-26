@@ -121,8 +121,11 @@ function hintFor(err: WuapiError): string | undefined {
     case "rate_limited":
       return "Wait retryAfterSeconds before calling again.";
     case "subscription_required":
-    case "trial_ended":
-      return "Start or renew the subscription under Billing in the wuapi dashboard.";
+      return "Pay or renew the subscription under Billing in the wuapi dashboard.";
+    case "upgrade_required":
+      return "The Free plan includes one number. Upgrade under Billing in the wuapi dashboard, or remove the extra numbers.";
+    case "free_limit_reached":
+      return "The Free plan's monthly limit is reached and the number is paused until the month ends. Upgrade under Billing to resume now; do not retry.";
     default:
       return undefined;
   }
