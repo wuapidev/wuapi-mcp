@@ -1,7 +1,7 @@
 {
   "name": "@wuapidev/mcp",
-  "version": "0.1.2",
-  "description": "Model Context Protocol server for wuapi, a WhatsApp API for developers. Lets Claude, Cursor, VS Code and other MCP clients send messages and manage linked numbers, chats, contacts, groups, webhooks, projects and invitations with your API key.",
+  "version": "0.2.0",
+  "description": "Model Context Protocol server for wuapi, a WhatsApp API for developers. Lets Claude, Cursor, VS Code and other MCP clients send messages and manage linked numbers, chats, contacts, groups, communities, channels, profiles, webhooks, projects and invitations with your API key.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

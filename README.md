@@ -4,7 +4,7 @@
 [![CI](https://github.com/wuapidev/wuapi-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/wuapidev/wuapi-mcp/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/@wuapidev/mcp.svg)](LICENSE)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server for [wuapi](https://wuapi.dev), the WhatsApp API for developers. It lets Claude, Cursor, VS Code and other MCP clients use your wuapi account: send messages, link numbers, read conversations, manage groups, webhooks, projects and invitations.
+A [Model Context Protocol](https://modelcontextprotocol.io) server for [wuapi](https://wuapi.dev), the WhatsApp API for developers. It lets Claude, Cursor, VS Code and other MCP clients use your wuapi account: send messages, link numbers, read conversations, manage groups, communities, channels, labels, profile and privacy, webhooks, projects and invitations.
 
 Every tool is a call to the [wuapi REST API](https://wuapi.dev/docs) with your own API key, through [`@wuapidev/sdk`](https://www.npmjs.com/package/@wuapidev/sdk). The API decides what the key may do, rate limits it (600 requests per minute per key) and logs each call in your dashboard, exactly as for any other client.
 
@@ -114,25 +114,51 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 
 ## Tools
 
-Tools that read are marked `readOnlyHint`. Tools that delete, revoke, cancel or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
+72 tools reach every operation of the REST API, except the two that return a secret (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
 
 | Area | Tools |
 |---|---|
 | Context | `get_current_key` |
-| Accounts | `list_accounts`, `get_account`, `get_account_qr_code`, `create_account`, `request_pairing_code`, `reconnect_account`, `list_proxy_locations` |
-| Messages | `send_text`, `send_media`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message` |
-| Chats | `mark_chat_read`, `send_read_receipts`, `archive_chat`, `pin_chat`, `mute_chat` |
-| Contacts | `check_numbers`, `lookup_contacts` |
-| Groups | `list_groups`, `get_group`, `create_group`, `add_group_participants`, `remove_group_participants`, `promote_group_participants`, `demote_group_participants`, `get_group_invite_link`, `reset_group_invite_link`, `leave_group` |
+| Accounts | `list_accounts`, `get_account`, `get_account_qr_code`, `create_account`, `request_pairing_code`, `reconnect_account`, `list_proxy_locations`, `update_account`, `unlink_account`, `set_presence`, `set_disappearing_timer`, `reject_call` |
+| Messages | `send_text`, `send_media`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message`, `vote_in_poll`, `star_message` |
+| Chats | `mark_chat_read`, `send_read_receipts`, `archive_chat`, `pin_chat`, `mute_chat`, `delete_chat`, `manage_labels` |
+| Contacts | `check_numbers`, `lookup_contacts`, `lookup_whatsapp_info`, `manage_block_list` |
+| Profile | `manage_profile`, `manage_privacy` |
+| Groups | `list_groups`, `get_group`, `create_group`, `add_group_participants`, `remove_group_participants`, `promote_group_participants`, `demote_group_participants`, `get_group_invite_link`, `reset_group_invite_link`, `leave_group`, `manage_group_settings`, `manage_group_joins`, `manage_community` |
+| Channels | `manage_channel` |
 | Stories | `post_story` |
-| Webhooks | `list_webhooks`, `create_webhook`, `update_webhook`, `delete_webhook` |
-| Projects | `list_projects`, `get_project`, `create_project` |
-| Invitations | `create_invitation`, `list_invitations`, `get_invitation`, `cancel_invitation` |
+| Webhooks | `list_webhooks`, `get_webhook`, `create_webhook`, `update_webhook`, `delete_webhook` |
+| Projects | `list_projects`, `get_project`, `create_project`, `manage_project` |
+| Invitations | `create_invitation`, `list_invitations`, `get_invitation`, `cancel_invitation`, `resend_invitation`, `manage_branding` |
 | Usage | `get_usage`, `get_usage_by_project` |
 
-`get_account_qr_code` returns the QR code as an image your client can show. Projects, invitations and usage need an organization key.
+Resources with many small operations are one tool with an `action` argument, so the list stays short enough for a model to pick from. The tool's description lists its actions, and each field says which actions use it. Only the destructive actions (marked below) need `confirm: true`.
 
-Not exposed: listing chats, sending a test webhook event and reading request logs have no public API endpoint, so they are not tools. They are in the dashboard.
+| Tool | Actions |
+|---|---|
+| `unlink_account` | `logout`\*, `delete`\* |
+| `set_presence` | `online`, `offline`, `typing`, `recording`, `paused`, `subscribe` |
+| `manage_labels` | `upsert`, `delete`\*, `label_chat`, `unlabel_chat`, `label_message`, `unlabel_message` |
+| `lookup_whatsapp_info` | `contact_picture`, `business_profile`, `resolve_link`, `bots`, `sticker_pack`, `order` |
+| `manage_block_list` | `list`, `block`\*, `unblock` |
+| `manage_profile` | `update`, `set_picture`, `delete_picture`\*, `get_contact_link`, `reset_contact_link`\* |
+| `manage_privacy` | `get`, `get_story_privacy`, `update` |
+| `manage_group_settings` | `update`, `set_picture`, `delete_picture`\* |
+| `manage_group_joins` | `preview_invite`, `join`, `list_requests`, `approve_requests`, `reject_requests` |
+| `manage_community` | `create`, `list_groups`, `list_members`, `link_group`, `unlink_group` |
+| `manage_channel` | `list`, `get`, `preview_invite`, `list_messages`, `create`, `follow`, `unfollow`, `mute`, `unmute`, `react`, `mark_viewed` |
+| `manage_project` | `update`, `delete`\*, `list_keys`, `revoke_key`\* |
+| `manage_branding` | `get`, `update` |
+
+\* needs `confirm: true`.
+
+To post to a channel, use `send_text` or `send_media` with `to` set to the channel id. In read-only mode a tool that mixes reads and writes keeps only its reading actions (`manage_channel` keeps `list`, `get`, `preview_invite` and `list_messages`).
+
+`get_account_qr_code` returns the QR code as an image your client can show. Projects, invitations, branding and usage need an organization key.
+
+Not exposed: creating a project API key and rotating a webhook endpoint's signing secret. Both return a secret exactly once, and tool results never carry secrets, so a tool would create a key or secret nobody could read (and a rotation would break your server's signature check at once). Do both in the dashboard or with the SDK. Listing chats, sending a test webhook event and reading request logs have no public API endpoint; they are in the dashboard.
+
+`src/operations.ts` maps every API operation to the tools that call it; a test keeps it equal to the OpenAPI spec.
 
 ## Resources and prompts
 
