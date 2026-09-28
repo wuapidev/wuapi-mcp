@@ -48,9 +48,12 @@ describe("catalog", () => {
   });
 
   it("makes every destructive tool require confirm: true", () => {
-    const destructive = TOOLS.filter((t) => t.annotations.destructiveHint);
+    const destructive = TOOLS.filter((t) => t.annotations.destructiveHint && !t.actions);
     expect(destructive.map((t) => t.name).sort()).toEqual(
-      ["cancel_invitation", "cancel_message", "delete_message", "delete_webhook", "leave_group", "remove_group_participants", "reset_group_invite_link"].sort(),
+      [
+        "cancel_invitation", "cancel_message", "delete_chat", "delete_message", "delete_webhook", "leave_group",
+        "remove_group_participants", "resend_invitation", "reset_group_invite_link",
+      ].sort(),
     );
     for (const t of destructive) {
       const json = z.toJSONSchema(t.inputSchema) as { required?: string[]; properties: Record<string, { const?: unknown }> };
@@ -62,6 +65,22 @@ describe("catalog", () => {
     expect(schemaAccepts("delete_message", { messageId: "m", confirm: true })).toBe(true);
   });
 
+  it("makes every destructive action require confirm: true, and only those", () => {
+    const destructive: string[] = [];
+    for (const t of TOOLS.filter((t) => t.actions)) {
+      for (const [action, spec] of Object.entries(t.actions!.specs)) {
+        if (spec.annotations.destructiveHint) destructive.push(`${t.name}.${action}`);
+        expect(spec.required.includes("confirm"), `${t.name}.${action}`).toBe(spec.annotations.destructiveHint);
+      }
+      expect(t.annotations.destructiveHint, t.name).toBe(Object.values(t.actions!.specs).some((s) => s.annotations.destructiveHint));
+    }
+    expect(destructive.sort()).toEqual(
+      [
+        "manage_block_list.block", "manage_group_settings.delete_picture", "manage_labels.delete", "manage_profile.delete_picture",
+        "manage_profile.reset_contact_link", "manage_project.delete", "manage_project.revoke_key", "unlink_account.delete", "unlink_account.logout",
+      ].sort(),
+    );
+  });
   it("produces a JSON schema for every tool input", () => {
     for (const t of TOOLS) {
       const json = z.toJSONSchema(t.inputSchema) as { type: string };
@@ -72,6 +91,13 @@ describe("catalog", () => {
   it("lists every tool in the README", () => {
     const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
     for (const t of TOOLS) expect(readme, t.name).toContain(`\`${t.name}\``);
+    expect(readme).toContain(`${TOOLS.length} tools reach every operation`);
+    for (const t of TOOLS.filter((t) => t.actions)) {
+      const row = readme.split("\n").find((l) => l.startsWith(`| \`${t.name}\` |`));
+      expect(row, t.name).toBeDefined();
+      const listed = [...row!.split("|")[2]!.matchAll(/`([a-z_]+)`(\\\*)?/g)].map((m) => `${m[1]}${m[2] ? "*" : ""}`);
+      expect(listed, t.name).toEqual(t.actions!.names.map((a) => `${a}${t.actions!.specs[a]!.annotations.destructiveHint ? "*" : ""}`));
+    }
   });
 
   it("covers the requested areas", () => {

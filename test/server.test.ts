@@ -50,6 +50,24 @@ describe("MCP server over an in-memory transport", () => {
     expect(tools.length).toBeGreaterThan(10);
     expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
     expect(tools.find((t) => t.name === "send_text")).toBeUndefined();
+    const channel = tools.find((t) => t.name === "manage_channel")!;
+    expect((channel.inputSchema.properties as { action: { enum: string[] } }).action.enum).toEqual(["list", "get", "preview_invite", "list_messages"]);
+    expect(tools.find((t) => t.name === "unlink_account")).toBeUndefined();
+  });
+
+  it("publishes action tools as plain objects and runs the chosen action", async () => {
+    const { mcp, client } = await connect();
+    const { tools } = await mcp.listTools();
+    const channel = tools.find((t) => t.name === "manage_channel")!;
+    expect(channel.inputSchema.type).toBe("object");
+    expect(channel.inputSchema).not.toHaveProperty("oneOf");
+    expect(channel.inputSchema.required).toEqual(["action"]);
+    const res = await mcp.callTool({ name: "manage_channel", arguments: { action: "follow", accountId: "acc_1", channelId: "c@newsletter" } });
+    expect(res.isError).toBeFalsy();
+    expect(client.channels.follow).toHaveBeenCalledWith("acc_1", "c@newsletter");
+    const missing = await mcp.callTool({ name: "manage_channel", arguments: { action: "follow", accountId: "acc_1" } });
+    expect(missing.isError).toBe(true);
+    expect(JSON.stringify(missing.content)).toContain("needs `channelId`");
   });
 
   it("calls a tool and returns structured content", async () => {

@@ -34,12 +34,14 @@ export const INSTRUCTIONS = [
   "Accounts are linked numbers; only accounts with status `ready` can send. Ids: contacts are E.164 with + or `lid:<digits>`, groups end in `@g.us`.",
   "Sends are queued and paced; check the outcome with get_message. Send only to people who expect the message, and never send the same message twice: reuse `idempotencyKey` when retrying.",
   "Tools marked destructive need `confirm: true`: set it only after the user asked for or approved that action.",
-  "Projects, invitations and usage need an organization key; a project key only reaches its own project.",
+  "Some tools group related operations under an `action` argument (manage_channel, manage_labels, ...); their descriptions list the actions and the fields each one needs, and only the destructive actions need `confirm: true`.",
+  "Projects, invitations, branding and usage need an organization key; a project key only reaches its own project.",
 ].join("\n");
 
-/** The tools a server registers for these options. */
+/** The tools a server registers for these options. Read-only: the tools that read, and the reading actions of tools that mix both. */
 export function toolsFor(options: Pick<WuapiMcpServerOptions, "readOnly">): ToolDefinition[] {
-  return options.readOnly ? TOOLS.filter((t) => t.annotations.readOnlyHint) : TOOLS;
+  if (!options.readOnly) return TOOLS;
+  return TOOLS.flatMap((t) => (t.annotations.readOnlyHint ? [t] : t.readOnlyVariant ? [t.readOnlyVariant] : []));
 }
 
 /** An MCP server exposing wuapi's API as tools, resources and prompts. Create one per client (and per HTTP request). */

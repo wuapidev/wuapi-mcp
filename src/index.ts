@@ -1,7 +1,9 @@
 export { createWuapiMcpServer, toolsFor, INSTRUCTIONS } from "./server.js";
 export type { WuapiMcpServerOptions, ToolCallEvent } from "./server.js";
 export { TOOLS, TOOL_GROUPS } from "./tools.js";
+export { OPERATION_TOOLS, NOT_EXPOSED } from "./operations.js";
 export type { ToolDefinition, ToolGroup, ToolAnnotations } from "./tools.js";
+export type { ActionSpec, ActionToolInfo } from "./actions.js";
 export { RESOURCES } from "./resources.js";
 export type { ResourceDefinition } from "./resources.js";
 export { PROMPTS } from "./prompts.js";

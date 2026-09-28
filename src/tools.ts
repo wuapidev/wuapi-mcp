@@ -1,6 +1,7 @@
-import type { Account, Group, Message, SendMessageParams, Wuapi } from "@wuapidev/sdk";
+import type { Account, AccountUpdateParams, Group, Message, PictureInput, SendMessageParams, Wuapi } from "@wuapidev/sdk";
 import { WEBHOOK_EVENT_TYPES, WuapiError } from "@wuapidev/sdk";
 import * as z from "zod";
+import { actionTool, type ActionToolInfo } from "./actions.js";
 import { fail, ok, page, ToolInputError, type ContentBlock, type ToolResult } from "./format.js";
 
 // The tool catalog. Every tool is one or two calls to the wuapi REST API
@@ -23,7 +24,9 @@ export type ToolGroup =
   | "messages"
   | "chats"
   | "contacts"
+  | "profile"
   | "groups"
+  | "channels"
   | "stories"
   | "webhooks"
   | "projects"
@@ -45,6 +48,10 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
   inputSchema: S;
   annotations: ToolAnnotations;
   run: (client: Wuapi, args: z.infer<S>) => Promise<ToolResult>;
+  /** Tools with an `action` (src/actions.ts): the actions and the exact input they are parsed with. */
+  actions?: ActionToolInfo;
+  /** A tool mixing reads and writes: the same tool with only its reading actions, for read-only servers. */
+  readOnlyVariant?: ToolDefinition;
 }
 
 function tool<S extends z.ZodObject>(def: ToolDefinition<S>): ToolDefinition {
@@ -139,6 +146,87 @@ const webhookEvents = z
   .array(z.enum(WEBHOOK_EVENT_TYPES.filter((e) => e !== "webhook.test") as [string, ...string[]]))
   .min(1)
   .describe("Event types to receive, such as `message.received`, `message.sent`, `message.failed`, `account.connected`, `account.disconnected`.");
+
+const contactId = z.string().trim().min(1).max(200).describe("A contact: E.164 with + (`+584241112233`) or `lid:<digits>`.");
+const channelId = z.string().trim().min(1).max(200).describe("The channel id (`...@newsletter`), from manage_channel `list`.");
+const communityId = z.string().trim().min(1).max(200).describe("The community's group id (`...@g.us`), from list_groups (`community: true`).");
+const pictureUrl = z
+  .string()
+  .trim()
+  .max(2048)
+  .regex(/^https:\/\//i, "Must be an https URL.")
+  .describe("The picture as a public https URL of a JPEG. wuapi downloads it. Pass this or `pictureBase64`.");
+const pictureBase64 = z.string().trim().min(1).max(5_000_000).describe("The picture as a base64 JPEG. Pass this or `pictureUrl`.");
+const inviteCode = z
+  .string()
+  .trim()
+  .min(1)
+  .max(512)
+  .describe("The invite code, or the full invite link (`https://chat.whatsapp.com/...`, `https://whatsapp.com/channel/...`).");
+const disappearingSeconds = z
+  .literal([0, 86_400, 604_800, 7_776_000])
+  .describe("How long messages last: 86400 (24 hours), 604800 (7 days) or 7776000 (90 days). 0 turns disappearing messages off.");
+const privacyAudience = z.enum(["all", "contacts", "contact_blacklist", "none"]);
+const nullableHttpsUrl = z.string().trim().max(2048).regex(/^https:\/\//i, "Must be an https URL.").nullable();
+const pacingUpdate = z
+  .object({
+    messagesPerMinute: z.number().int().min(0).max(30).nullable().optional().describe("0 to 30 messages per minute. 0 turns the cap off; null resets it (off)."),
+    firstContactPerMinute: z
+      .number()
+      .int()
+      .min(0)
+      .max(30)
+      .nullable()
+      .optional()
+      .describe("Messages per minute to contacts the account never wrote to, up to `messagesPerMinute`. 0 turns the cap off; null resets it."),
+    typing: z
+      .object({
+        enabled: z.boolean().nullable().optional().describe("Show typing before each message."),
+        minMs: z.number().int().min(0).max(10_000).nullable().optional().describe("Shortest typing time, 0 to 10000 ms."),
+        maxMs: z.number().int().min(0).max(20_000).nullable().optional().describe("Longest typing time, `minMs` to 20000 ms."),
+        charsPerSecond: z.number().int().min(5).max(100).nullable().optional().describe("Typing speed, 5 to 100."),
+      })
+      .nullable()
+      .optional()
+      .describe("The typing indicator before each message. Fields you pass are merged; null resets."),
+    queueTimeoutMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(1440)
+      .nullable()
+      .optional()
+      .describe("How long a message may wait for the account to be ready before it fails, 1 to 1440. null resets it to 60."),
+  })
+  .nullable()
+  .describe(
+    "Anti-ban pacing, merged over the stored values: omitted fields keep theirs, null resets the whole pacing to the defaults (every protection off). Recommended for bulk, cold or marketing sends: `{\"messagesPerMinute\": 12, \"firstContactPerMinute\": 5, \"typing\": {\"enabled\": true}}`.",
+  );
+
+/** The last part of an invite link, or the code as given. */
+function inviteCodeOf(input: string): string {
+  if (!/^https?:\/\//i.test(input)) return input;
+  try {
+    return new URL(input).pathname.split("/").filter(Boolean).at(-1) ?? input;
+  } catch {
+    return input;
+  }
+}
+
+/** Exactly one of a picture URL or base64 JPEG. */
+function pictureInput(a: { pictureUrl?: string | undefined; pictureBase64?: string | undefined }): PictureInput {
+  if (a.pictureUrl && a.pictureBase64) throw new ToolInputError("Pass `pictureUrl` or `pictureBase64`, not both.");
+  if (a.pictureUrl) return { url: a.pictureUrl };
+  if (a.pictureBase64) return { base64: a.pictureBase64 };
+  throw new ToolInputError("Pass the picture as `pictureUrl` or `pictureBase64`.");
+}
+
+/** The defined values, or a ToolInputError when there is none. */
+function changes<T extends Record<string, unknown>>(value: T, fields: string): T {
+  const out = defined(value);
+  if (Object.keys(out).length === 0) throw new ToolInputError(`Pass at least one of ${fields}.`);
+  return out;
+}
 
 const DEFAULT_LIMIT = 20;
 const listArgs = (a: { limit?: number | undefined; cursor?: string | undefined }) => ({
@@ -339,6 +427,153 @@ export const TOOLS: ToolDefinition[] = [
     run: async (client, a) => page(await client.proxyLocations.list(defined({ q: a.q, country: a.country, ...listArgs(a) })).page()),
   }),
 
+  tool({
+    name: "update_account",
+    title: "Update an account",
+    group: "accounts",
+    description:
+      "Change an account's settings: rename it, reject incoming calls automatically, turn on and tune its pacing (the anti-ban protections, off by default), choose whether the next link imports recent chats, or move its proxy location. Pacing applies from the next send. A proxy location change gives the number a new exit IP and reconnects it; it is refused within 10 minutes of the previous change. Returns the updated account with its pacing.",
+    inputSchema: z.object({
+      accountId,
+      name: z.string().trim().min(1).max(100).optional().describe("A name for the account, such as `Front desk`."),
+      rejectCalls: z.boolean().optional().describe("Reject incoming calls automatically."),
+      rejectCallsMessage: z.string().max(1000).optional().describe("Text sent to the caller after an automatic reject (not for group calls)."),
+      pacing: pacingUpdate.optional(),
+      historySync: z
+        .enum(["none", "recent"])
+        .optional()
+        .describe("`recent` imports the chats the phone sends at the next link. A number that is already linked gets no new history."),
+      proxyLocation: z
+        .object({
+          country: z.string().trim().length(2).optional().describe("ISO 3166-1 alpha-2 country code, uppercase. Goes with `city`."),
+          city: z.string().trim().min(1).max(100).optional().describe("City code from list_proxy_locations. Goes with `country`."),
+          strictCity: z.boolean().optional().describe("`true` requires the exact city; `false` prefers it and may exit from another city of the same country."),
+        })
+        .optional()
+        .describe("Move the number (`country` and `city` together), switch whether its city is exact (`strictCity`), or both. The session reconnects on a new exit IP."),
+    }),
+    annotations: { ...SET, openWorldHint: true },
+    run: async (client, a) => {
+      const { accountId: target, ...rest } = a;
+      const params = changes(rest, "name, rejectCalls, rejectCallsMessage, pacing, historySync or proxyLocation");
+      const loc = a.proxyLocation;
+      if (loc) {
+        if ((loc.country === undefined) !== (loc.city === undefined)) throw new ToolInputError("`proxyLocation.country` and `proxyLocation.city` go together.");
+        if (loc.country === undefined && loc.strictCity === undefined) throw new ToolInputError("`proxyLocation` needs `country` and `city`, `strictCity`, or both.");
+      }
+      const account = await client.accounts.update(target, params as AccountUpdateParams);
+      return ok({ ...slimAccount(account), pacing: account.pacing });
+    },
+  }),
+  actionTool({
+    name: "unlink_account",
+    title: "Log out or delete an account",
+    group: "accounts",
+    description:
+      "Unlink a WhatsApp number from wuapi. Both actions log the number out on WhatsApp and stop billing for it. Use `logout` to keep the account and its stored messages (reconnect_account then shows a new QR code to link again); use `delete` to remove the account for good.",
+    fields: { accountId, confirm: confirm("The number is logged out of WhatsApp.") },
+    actions: (act) => ({
+      logout: act({
+        summary: "Unlink the phone and stop billing, keeping the account and its messages. Returns the account.",
+        annotations: DESTROY,
+        required: ["accountId", "confirm"],
+        run: async (client, a) => ok(slimAccount(await client.accounts.logout(a.accountId))),
+      }),
+      delete: act({
+        summary: "Log out, delete the account and stop billing for it. Cannot be undone; fires no event.",
+        annotations: DESTROY,
+        required: ["accountId", "confirm"],
+        run: async (client, a) => {
+          await client.accounts.delete(a.accountId);
+          return ok({ accountId: a.accountId, deleted: true });
+        },
+      }),
+    }),
+  }),
+  actionTool({
+    name: "set_presence",
+    title: "Set presence or typing",
+    group: "accounts",
+    description:
+      "Presence as contacts see it: the account online or offline, typing or recording in a chat, and presence events from a contact. Typing shows until `paused` or the next message. With typing turned on in the account's pacing (update_account), sends show it on their own.",
+    fields: { accountId, chatId, contactId },
+    actions: (act) => {
+      const account = (state: "online" | "offline", summary: string) =>
+        act({
+          summary,
+          annotations: SET,
+          required: ["accountId"],
+          run: async (client, a) => {
+            await client.accounts.setPresence(a.accountId, state);
+            return ok({ accountId: a.accountId, presence: state });
+          },
+        });
+      const chat = (state: "typing" | "recording" | "paused", summary: string) =>
+        act({
+          summary,
+          annotations: SET,
+          required: ["accountId", "chatId"],
+          run: async (client, a) => {
+            await client.chats.sendPresence(a.accountId, a.chatId, state);
+            return ok({ accountId: a.accountId, chatId: a.chatId, presence: state });
+          },
+        });
+      return {
+        online: account("online", "Show the account as online to contacts."),
+        offline: account("offline", "Show the account as offline."),
+        typing: chat("typing", "Show typing in a chat."),
+        recording: chat("recording", "Show recording audio in a chat."),
+        paused: chat("paused", "Clear the typing or recording indicator in a chat."),
+        subscribe: act({
+          summary:
+            "Receive `contact.presence_updated` webhook events when the contact comes online, goes offline or types. Fails with `not_supported` when the account cannot receive presence events.",
+          annotations: SET,
+          required: ["accountId", "contactId"],
+          run: async (client, a) => {
+            await client.contacts.subscribePresence(a.accountId, a.contactId);
+            return ok({ accountId: a.accountId, contactId: a.contactId, subscribed: true });
+          },
+        }),
+      };
+    },
+  }),
+  tool({
+    name: "set_disappearing_timer",
+    title: "Set disappearing messages",
+    group: "accounts",
+    description:
+      "Turn disappearing messages on or off: for one chat with `chatId`, or without it the account's default timer, which new chats start with. Messages already stored in wuapi are kept.",
+    inputSchema: z.object({
+      accountId,
+      chatId: chatId.optional().describe("The chat (a contact or group id). Omit it to set the account's default for new chats."),
+      durationSeconds: disappearingSeconds,
+    }),
+    annotations: SET,
+    run: async (client, a) => {
+      if (a.chatId) await client.chats.setDisappearingTimer(a.accountId, a.chatId, a.durationSeconds);
+      else await client.accounts.setDefaultDisappearingTimer(a.accountId, a.durationSeconds);
+      return ok({ accountId: a.accountId, chatId: a.chatId ?? "default", durationSeconds: a.durationSeconds });
+    },
+  }),
+  tool({
+    name: "reject_call",
+    title: "Reject an incoming call",
+    group: "accounts",
+    description:
+      "Reject a WhatsApp call ringing on the account, with the `id` and `from` of its `call.received` webhook event. To reject every call automatically, set `rejectCalls` with update_account.",
+    inputSchema: z.object({
+      accountId,
+      callId: id("The call id: `data.object.id` of the `call.received` event."),
+      from: z.string().trim().min(1).max(128).describe("The caller: `data.object.from` of the same event."),
+      idempotencyKey,
+    }),
+    annotations: ACT,
+    run: async (client, a) => {
+      await client.calls.reject(a.accountId, a.callId, { from: a.from }, opts(a.idempotencyKey));
+      return ok({ accountId: a.accountId, callId: a.callId, rejected: true });
+    },
+  }),
+
   // ---- messages ------------------------------------------------------------
   tool({
     name: "send_text",
@@ -536,6 +771,30 @@ export const TOOLS: ToolDefinition[] = [
     },
   }),
 
+  tool({
+    name: "vote_in_poll",
+    title: "Vote in a poll",
+    group: "messages",
+    description:
+      "Vote in a poll message as the account that received or sent it, with the names of its options (get_message shows them). An empty list retracts the vote. Returns the poll with its tally.",
+    inputSchema: z.object({
+      messageId,
+      options: z.array(z.string().min(1).max(100)).max(12).describe("Option names exactly as in the poll. `[]` retracts the vote."),
+      idempotencyKey,
+    }),
+    annotations: SET,
+    run: async (client, a) => ok(await client.messages.vote(a.messageId, a.options, opts(a.idempotencyKey))),
+  }),
+  tool({
+    name: "star_message",
+    title: "Star or unstar a message",
+    group: "messages",
+    description: "Star a message on the phone and the other linked devices, or unstar it with `starred: false`. Returns the message.",
+    inputSchema: z.object({ messageId, starred: z.boolean().optional().describe("Default true.") }),
+    annotations: SET,
+    run: async (client, a) => ok(a.starred === false ? await client.messages.unstar(a.messageId) : await client.messages.star(a.messageId)),
+  }),
+
   // ---- chats ---------------------------------------------------------------
   tool({
     name: "mark_chat_read",
@@ -611,6 +870,95 @@ export const TOOLS: ToolDefinition[] = [
     },
   }),
 
+  tool({
+    name: "delete_chat",
+    title: "Delete a chat",
+    group: "chats",
+    description:
+      "Delete a chat from the account's linked devices (the phone and WhatsApp Web). The messages wuapi stores are kept and still readable with list_messages. This cannot be undone on the devices.",
+    inputSchema: z.object({
+      accountId,
+      chatId,
+      deleteMedia: z.boolean().optional().describe("Also delete the chat's media files from the devices."),
+      confirm: confirm("The chat disappears from the phone."),
+    }),
+    annotations: DESTROY,
+    run: async (client, a) => {
+      await client.chats.delete(a.accountId, a.chatId, defined({ deleteMedia: a.deleteMedia }));
+      return ok({ accountId: a.accountId, chatId: a.chatId, deleted: true });
+    },
+  }),
+  actionTool({
+    name: "manage_labels",
+    title: "Manage labels",
+    group: "chats",
+    description:
+      "WhatsApp Business labels on chats and messages: create or edit a label, delete it, and add it to or remove it from a chat or a message. WhatsApp Business accounts only; others answer `not_supported`. There is no endpoint that lists labels: they arrive in `label.updated` webhook events, and `upsert` creates one under an id you choose.",
+    fields: {
+      accountId,
+      labelId: z.string().trim().min(1).max(64).describe("The label id. `upsert` creates the label under this id when there is none."),
+      name: z.string().trim().min(1).max(100).describe("The label name."),
+      color: z.number().int().min(0).max(19).describe("WhatsApp's label color index, 0 to 19. Default 0."),
+      chatId,
+      messageId,
+      confirm: confirm("The label is removed from every chat and message."),
+    },
+    actions: (act) => ({
+      upsert: act({
+        summary: "Create the label with this id, or rename or recolor it. Returns the label.",
+        annotations: SET,
+        required: ["accountId", "labelId", "name"],
+        optional: ["color"],
+        run: async (client, a) => ok(await client.labels.upsert(a.accountId, a.labelId, defined({ name: a.name, color: a.color }))),
+      }),
+      delete: act({
+        summary: "Delete the label.",
+        annotations: DESTROY,
+        required: ["accountId", "labelId", "confirm"],
+        run: async (client, a) => {
+          await client.labels.delete(a.accountId, a.labelId);
+          return ok({ accountId: a.accountId, labelId: a.labelId, deleted: true });
+        },
+      }),
+      label_chat: act({
+        summary: "Add the label to a chat.",
+        annotations: SET,
+        required: ["accountId", "chatId", "labelId"],
+        run: async (client, a) => {
+          await client.chats.addLabel(a.accountId, a.chatId, a.labelId);
+          return ok({ accountId: a.accountId, chatId: a.chatId, labelId: a.labelId, labeled: true });
+        },
+      }),
+      unlabel_chat: act({
+        summary: "Remove the label from a chat.",
+        annotations: SET,
+        required: ["accountId", "chatId", "labelId"],
+        run: async (client, a) => {
+          await client.chats.removeLabel(a.accountId, a.chatId, a.labelId);
+          return ok({ accountId: a.accountId, chatId: a.chatId, labelId: a.labelId, labeled: false });
+        },
+      }),
+      label_message: act({
+        summary: "Add the label to a message, as the account that sent or received it.",
+        annotations: SET,
+        required: ["messageId", "labelId"],
+        run: async (client, a) => {
+          await client.messages.addLabel(a.messageId, a.labelId);
+          return ok({ messageId: a.messageId, labelId: a.labelId, labeled: true });
+        },
+      }),
+      unlabel_message: act({
+        summary: "Remove the label from a message.",
+        annotations: SET,
+        required: ["messageId", "labelId"],
+        run: async (client, a) => {
+          await client.messages.removeLabel(a.messageId, a.labelId);
+          return ok({ messageId: a.messageId, labelId: a.labelId, labeled: false });
+        },
+      }),
+    }),
+  }),
+
   // ---- contacts ------------------------------------------------------------
   tool({
     name: "check_numbers",
@@ -636,6 +984,199 @@ export const TOOLS: ToolDefinition[] = [
     }),
     annotations: READ_LIVE,
     run: async (client, a) => ok({ items: await client.contacts.lookup(a.accountId, a.contactIds) }),
+  }),
+
+  actionTool({
+    name: "lookup_whatsapp_info",
+    title: "Look up WhatsApp details",
+    group: "contacts",
+    description:
+      "Read details from WhatsApp through a linked number: a contact's profile picture or business profile, who a contact QR link or business message link points to, WhatsApp's AI bot directory, and the sticker pack or catalog order a message refers to. Nothing is changed.",
+    fields: {
+      accountId,
+      contactId,
+      preview: z.boolean().describe("A small preview instead of the full picture."),
+      kind: z.enum(["contact", "business"]).describe("`contact` for a contact QR link, `business` for a business message link."),
+      code: z.string().trim().min(1).max(512).describe("The link, or its code."),
+      stickerPackId: id("The sticker pack id, from a sticker message."),
+      orderId: id("The order id, from an order message."),
+      token: z.string().trim().min(1).max(512).describe("The order's token, from the same order message."),
+      limit,
+      cursor,
+    },
+    actions: (act) => ({
+      contact_picture: act({
+        summary: "The contact's profile picture URL, when the account can see it.",
+        annotations: READ_LIVE,
+        required: ["accountId", "contactId"],
+        optional: ["preview"],
+        run: async (client, a) => ok(await client.contacts.getPicture(a.accountId, a.contactId, defined({ preview: a.preview }))),
+      }),
+      business_profile: act({
+        summary: "A business contact's address, email, categories, time zone and opening hours.",
+        annotations: READ_LIVE,
+        required: ["accountId", "contactId"],
+        run: async (client, a) => ok(await client.contacts.getBusinessProfile(a.accountId, a.contactId)),
+      }),
+      resolve_link: act({
+        summary: "Who a contact QR link or business message link points to, and its prefilled text. Fails with `not_supported` when WhatsApp does not offer it to the account.",
+        annotations: READ_LIVE,
+        required: ["accountId", "kind", "code"],
+        run: async (client, a) => ok(await client.contacts.resolveLink(a.accountId, { kind: a.kind, code: a.code })),
+      }),
+      bots: act({
+        summary: "WhatsApp's AI bot directory as the account sees it. Fails with `not_supported` where WhatsApp does not offer it.",
+        annotations: READ_LIVE,
+        required: ["accountId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.bots.list(a.accountId, listArgs(a)).page()),
+      }),
+      sticker_pack: act({
+        summary: "A sticker pack and its stickers.",
+        annotations: READ_LIVE,
+        required: ["accountId", "stickerPackId"],
+        run: async (client, a) => ok(await client.stickerPacks.get(a.accountId, a.stickerPackId)),
+      }),
+      order: act({
+        summary: "The products, quantities and totals of a catalog order received as a message.",
+        annotations: READ_LIVE,
+        required: ["accountId", "orderId", "token"],
+        run: async (client, a) => ok(await client.orders.get(a.accountId, a.orderId, { token: a.token })),
+      }),
+    }),
+  }),
+  actionTool({
+    name: "manage_block_list",
+    title: "Block or unblock contacts",
+    group: "contacts",
+    description: "The account's block list on WhatsApp: list blocked contacts, block a contact (it can no longer message or call the account) or unblock it.",
+    fields: { accountId, contactId, limit, cursor, confirm: confirm("The contact can no longer message or call the account.") },
+    actions: (act) => ({
+      list: act({
+        summary: "Blocked contacts, with their number and `lid:` id when known.",
+        annotations: READ_LIVE,
+        required: ["accountId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.contacts.listBlocked(a.accountId, listArgs(a)).page()),
+      }),
+      block: act({
+        summary: "Block a contact.",
+        annotations: DESTROY,
+        required: ["accountId", "contactId", "confirm"],
+        run: async (client, a) => {
+          await client.contacts.block(a.accountId, a.contactId);
+          return ok({ accountId: a.accountId, contactId: a.contactId, blocked: true });
+        },
+      }),
+      unblock: act({
+        summary: "Unblock a contact.",
+        annotations: SET,
+        required: ["accountId", "contactId"],
+        run: async (client, a) => {
+          await client.contacts.unblock(a.accountId, a.contactId);
+          return ok({ accountId: a.accountId, contactId: a.contactId, blocked: false });
+        },
+      }),
+    }),
+  }),
+
+  // ---- profile -------------------------------------------------------------
+  actionTool({
+    name: "manage_profile",
+    title: "Manage the account's profile",
+    group: "profile",
+    description:
+      "The linked number's own WhatsApp profile: its display name and About text, its profile picture, and its contact QR link (a `https://wa.me/qr/...` link that opens a chat with it).",
+    fields: {
+      accountId,
+      name: z.string().trim().min(1).max(25).describe("Display name, up to 25 characters."),
+      about: z.string().max(139).describe("About text, up to 139 characters."),
+      pictureUrl,
+      pictureBase64,
+      confirm: confirm("This cannot be undone."),
+    },
+    actions: (act) => ({
+      update: act({
+        summary: "Change the display name, the About text, or both.",
+        annotations: SET,
+        required: ["accountId"],
+        optional: ["name", "about"],
+        run: async (client, a) => {
+          const params = changes({ name: a.name, about: a.about }, "name or about");
+          await client.profile.update(a.accountId, params);
+          return ok({ accountId: a.accountId, ...params, updated: true });
+        },
+      }),
+      set_picture: act({
+        summary: "Set the profile picture from an https URL or base64 JPEG. Returns the picture.",
+        annotations: SET,
+        required: ["accountId"],
+        optional: ["pictureUrl", "pictureBase64"],
+        run: async (client, a) => ok(await client.profile.setPicture(a.accountId, pictureInput(a))),
+      }),
+      delete_picture: act({
+        summary: "Remove the profile picture.",
+        annotations: DESTROY,
+        required: ["accountId", "confirm"],
+        run: async (client, a) => {
+          await client.profile.deletePicture(a.accountId);
+          return ok({ accountId: a.accountId, pictureDeleted: true });
+        },
+      }),
+      get_contact_link: act({
+        summary: "The account's contact QR link.",
+        annotations: READ_LIVE,
+        required: ["accountId"],
+        run: async (client, a) => ok(await client.contacts.getLink(a.accountId)),
+      }),
+      reset_contact_link: act({
+        summary: "Revoke the contact QR link and return a new one. The old link stops working.",
+        annotations: { ...DESTROY, idempotentHint: false },
+        required: ["accountId", "confirm"],
+        run: async (client, a) => ok(await client.contacts.resetLink(a.accountId)),
+      }),
+    }),
+  }),
+  actionTool({
+    name: "manage_privacy",
+    title: "Manage privacy settings",
+    group: "profile",
+    description: "The account's WhatsApp privacy settings: who sees its last seen, profile picture, stories and online status, who may add it to groups or call it, and whether it sends read receipts.",
+    fields: {
+      accountId,
+      groupAdd: privacyAudience.describe("Who can add the account to groups."),
+      lastSeen: privacyAudience.describe("Who sees its last seen."),
+      stories: privacyAudience.describe("Who sees its stories."),
+      profile: privacyAudience.describe("Who sees its profile picture."),
+      readReceipts: z.enum(["all", "none"]).describe("`none` stops sending read receipts (and seeing others')."),
+      online: z.enum(["all", "match_last_seen"]).describe("Who sees it online."),
+      callAdd: z.enum(["all", "known"]).describe("Who can call it: everyone, or only known contacts."),
+      messages: z.enum(["all", "contacts"]).describe("Who can message it."),
+    },
+    actions: (act) => ({
+      get: act({
+        summary: "Every privacy setting.",
+        annotations: READ_LIVE,
+        required: ["accountId"],
+        run: async (client, a) => ok(await client.privacy.get(a.accountId)),
+      }),
+      get_story_privacy: act({
+        summary: "Who sees the account's stories: its contacts, all but some, or only some.",
+        annotations: READ_LIVE,
+        required: ["accountId"],
+        run: async (client, a) => ok(await client.privacy.getStoryPrivacy(a.accountId)),
+      }),
+      update: act({
+        summary: "Change one or more settings. Each setting is one change on WhatsApp. Returns every setting.",
+        annotations: SET,
+        required: ["accountId"],
+        optional: ["groupAdd", "lastSeen", "stories", "profile", "readReceipts", "online", "callAdd", "messages"],
+        run: async (client, a) => {
+          const { accountId: target, action: _action, ...settings } = a;
+          return ok(await client.privacy.update(target, changes(settings, "the privacy settings")));
+        },
+      }),
+    }),
   }),
 
   // ---- groups --------------------------------------------------------------
@@ -738,6 +1279,256 @@ export const TOOLS: ToolDefinition[] = [
     },
   }),
 
+  actionTool({
+    name: "manage_group_settings",
+    title: "Change a group's info and settings",
+    group: "groups",
+    description:
+      "Change a group the account administers: its name, description and settings (who can send, who can edit the info, whether joining needs approval, who can add members), and its picture.",
+    fields: {
+      accountId,
+      groupId,
+      name: z.string().trim().min(1).max(100).describe("The group name."),
+      description: z.string().max(2048).describe("The group description. An empty string clears it."),
+      announce: z.boolean().describe("`true`: only admins can send messages."),
+      locked: z.boolean().describe("`true`: only admins can edit the group info."),
+      joinApproval: z.boolean().describe("`true`: new members need an admin's approval (see manage_group_joins)."),
+      memberAddMode: z.enum(["admins", "all_members"]).describe("Who can add members."),
+      pictureUrl,
+      pictureBase64,
+      confirm: confirm("The group picture is removed."),
+    },
+    actions: (act) => ({
+      update: act({
+        summary: "Change any of name, description, announce, locked, joinApproval and memberAddMode. Returns the group.",
+        annotations: SET,
+        required: ["accountId", "groupId"],
+        optional: ["name", "description", "announce", "locked", "joinApproval", "memberAddMode"],
+        run: async (client, a) => {
+          const { accountId: acc, groupId: gid, action: _action, ...rest } = a;
+          const params = changes(rest, "name, description, announce, locked, joinApproval or memberAddMode");
+          return ok(slimGroup(await client.groups.update(acc, gid, params)));
+        },
+      }),
+      set_picture: act({
+        summary: "Set the group picture from an https URL or base64 JPEG. Returns the picture.",
+        annotations: SET,
+        required: ["accountId", "groupId"],
+        optional: ["pictureUrl", "pictureBase64"],
+        run: async (client, a) => ok(await client.groups.setPicture(a.accountId, a.groupId, pictureInput(a))),
+      }),
+      delete_picture: act({
+        summary: "Remove the group picture.",
+        annotations: DESTROY,
+        required: ["accountId", "groupId", "confirm"],
+        run: async (client, a) => {
+          await client.groups.deletePicture(a.accountId, a.groupId);
+          return ok({ accountId: a.accountId, groupId: a.groupId, pictureDeleted: true });
+        },
+      }),
+    }),
+  }),
+  actionTool({
+    name: "manage_group_joins",
+    title: "Join groups and handle join requests",
+    group: "groups",
+    description:
+      "Joining groups: preview the group behind an invite link, join it, and, in a group that needs approval to join, list, approve or reject the pending requests (the account must be an admin).",
+    fields: {
+      accountId,
+      groupId,
+      code: inviteCode,
+      contactIds: contactIds.describe("1 to 256 contact ids of people who asked to join."),
+      limit,
+      cursor,
+      idempotencyKey,
+    },
+    actions: (act) => ({
+      preview_invite: act({
+        summary: "The group behind an invite code or link, without joining: name, description, size.",
+        annotations: READ_LIVE,
+        required: ["accountId", "code"],
+        run: async (client, a) => ok(slimGroup(await client.groups.getInvite(a.accountId, inviteCodeOf(a.code)))),
+      }),
+      join: act({
+        summary: "Join a group with an invite code or link. Returns the group id; a group that needs approval makes it a pending request instead.",
+        annotations: ACT,
+        required: ["accountId", "code"],
+        optional: ["idempotencyKey"],
+        run: async (client, a) => ok(await client.groups.join(a.accountId, a.code, opts(a.idempotencyKey))),
+      }),
+      list_requests: act({
+        summary: "Pending requests to join the group.",
+        annotations: READ_LIVE,
+        required: ["accountId", "groupId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.groups.listJoinRequests(a.accountId, a.groupId, listArgs(a)).page()),
+      }),
+      approve_requests: act({
+        summary: "Let these people in. Each result says whether it worked.",
+        annotations: SET,
+        required: ["accountId", "groupId", "contactIds"],
+        run: async (client, a) => ok({ items: await client.groups.approveJoinRequests(a.accountId, a.groupId, a.contactIds) }),
+      }),
+      reject_requests: act({
+        summary: "Turn these requests down. Each result says whether it worked.",
+        annotations: SET,
+        required: ["accountId", "groupId", "contactIds"],
+        run: async (client, a) => ok({ items: await client.groups.rejectJoinRequests(a.accountId, a.groupId, a.contactIds) }),
+      }),
+    }),
+  }),
+  actionTool({
+    name: "manage_community",
+    title: "Manage communities",
+    group: "groups",
+    description:
+      "WhatsApp communities: a community is a group with `community: true` that links other groups. Create one, list its groups and members, and link or unlink groups (the account must admin both). get_group reads the community itself; send to it like a group.",
+    fields: {
+      accountId,
+      communityId,
+      groupId: groupId.describe("The group to link or unlink (`...@g.us`)."),
+      name: z.string().trim().min(1).max(100).describe("The community name."),
+      limit,
+      cursor,
+      idempotencyKey,
+    },
+    actions: (act) => ({
+      create: act({
+        summary: "Create a community with the account as owner. Returns it.",
+        annotations: ACT,
+        required: ["accountId", "name"],
+        optional: ["idempotencyKey"],
+        run: async (client, a) => ok(slimGroup(await client.groups.create(a.accountId, { name: a.name, community: true }, opts(a.idempotencyKey)))),
+      }),
+      list_groups: act({
+        summary: "The groups linked to the community, marking its default (announcement) group.",
+        annotations: READ_LIVE,
+        required: ["accountId", "communityId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.groups.listSubgroups(a.accountId, a.communityId, listArgs(a)).page()),
+      }),
+      list_members: act({
+        summary: "Members across the community's linked groups.",
+        annotations: READ_LIVE,
+        required: ["accountId", "communityId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.groups.listCommunityParticipants(a.accountId, a.communityId, listArgs(a)).page()),
+      }),
+      link_group: act({
+        summary: "Link a group into the community.",
+        annotations: SET,
+        required: ["accountId", "communityId", "groupId"],
+        run: async (client, a) => {
+          await client.groups.linkSubgroup(a.accountId, a.communityId, a.groupId);
+          return ok({ accountId: a.accountId, communityId: a.communityId, groupId: a.groupId, linked: true });
+        },
+      }),
+      unlink_group: act({
+        summary: "Unlink a group from the community. The group itself stays.",
+        annotations: SET,
+        required: ["accountId", "communityId", "groupId"],
+        run: async (client, a) => {
+          await client.groups.unlinkSubgroup(a.accountId, a.communityId, a.groupId);
+          return ok({ accountId: a.accountId, communityId: a.communityId, groupId: a.groupId, linked: false });
+        },
+      }),
+    }),
+  }),
+
+  // ---- channels ------------------------------------------------------------
+  actionTool({
+    name: "manage_channel",
+    title: "Manage channels",
+    group: "channels",
+    description:
+      "WhatsApp channels (one-to-many broadcasts, ids end in `@newsletter`): list the ones the account follows or owns, read one and its posts, preview an invite, create a channel, follow, unfollow, mute and unmute, react to posts and count as a viewer. To post to a channel the account administers, use send_text or send_media with `to` set to the channel id.",
+    fields: {
+      accountId,
+      channelId,
+      code: inviteCode,
+      name: z.string().trim().min(1).max(100).describe("The channel name."),
+      description: z.string().max(2048).describe("The channel description."),
+      pictureBase64: z.string().trim().min(1).max(5_000_000).describe("The channel picture as a base64 JPEG."),
+      channelMessageId: id("A post's id, from `list_messages`."),
+      channelMessageIds: z.array(z.string().trim().min(1).max(200)).min(1).max(100).describe("1 to 100 post ids, from `list_messages`."),
+      emoji: z.string().max(32).describe("One emoji. An empty string removes the reaction."),
+      limit,
+      cursor,
+      idempotencyKey,
+    },
+    actions: (act) => {
+      const toggle = (verb: "follow" | "unfollow" | "mute" | "unmute", summary: string, result: Record<string, boolean>) =>
+        act({
+          summary,
+          annotations: SET,
+          required: ["accountId", "channelId"],
+          run: async (client, a) => {
+            await client.channels[verb](a.accountId, a.channelId);
+            return ok({ accountId: a.accountId, channelId: a.channelId, ...result });
+          },
+        });
+      return {
+        list: act({
+          summary: "Channels the account follows or administers, with its role.",
+          annotations: READ_LIVE,
+          required: ["accountId"],
+          optional: ["limit", "cursor"],
+          run: async (client, a) => page(await client.channels.list(a.accountId, listArgs(a)).page()),
+        }),
+        get: act({
+          summary: "One channel: name, description, subscriber count, the account's role and whether it is muted.",
+          annotations: READ_LIVE,
+          required: ["accountId", "channelId"],
+          run: async (client, a) => ok(await client.channels.get(a.accountId, a.channelId)),
+        }),
+        preview_invite: act({
+          summary: "The channel behind an invite code or link, without following it.",
+          annotations: READ_LIVE,
+          required: ["accountId", "code"],
+          run: async (client, a) => ok(await client.channels.getInvite(a.accountId, inviteCodeOf(a.code))),
+        }),
+        list_messages: act({
+          summary: "The channel's recent posts, newest first, with view and reaction counts.",
+          annotations: READ_LIVE,
+          required: ["accountId", "channelId"],
+          optional: ["limit", "cursor"],
+          run: async (client, a) => page(await client.channels.listMessages(a.accountId, a.channelId, listArgs(a)).page()),
+        }),
+        create: act({
+          summary: "Create a channel with the account as owner. Returns it.",
+          annotations: ACT,
+          required: ["accountId", "name"],
+          optional: ["description", "pictureBase64", "idempotencyKey"],
+          run: async (client, a) =>
+            ok(await client.channels.create(a.accountId, defined({ name: a.name, description: a.description, pictureBase64: a.pictureBase64 }), opts(a.idempotencyKey))),
+        }),
+        follow: toggle("follow", "Follow the channel.", { following: true }),
+        unfollow: toggle("unfollow", "Stop following the channel.", { following: false }),
+        mute: toggle("mute", "Mute the channel's notifications.", { muted: true }),
+        unmute: toggle("unmute", "Unmute the channel.", { muted: false }),
+        react: act({
+          summary: "React to a post with an emoji, or remove the reaction with an empty string.",
+          annotations: SET,
+          required: ["accountId", "channelId", "channelMessageId", "emoji"],
+          run: async (client, a) => {
+            await client.channels.react(a.accountId, a.channelId, a.channelMessageId, a.emoji);
+            return ok({ channelId: a.channelId, channelMessageId: a.channelMessageId, emoji: a.emoji, reacted: a.emoji !== "" });
+          },
+        }),
+        mark_viewed: act({
+          summary: "Count the account as a viewer of these posts.",
+          annotations: SET,
+          required: ["accountId", "channelId", "channelMessageIds"],
+          run: async (client, a) => {
+            await client.channels.markViewed(a.accountId, a.channelId, a.channelMessageIds);
+            return ok({ channelId: a.channelId, viewed: a.channelMessageIds.length });
+          },
+        }),
+      };
+    },
+  }),
+
   // ---- stories -------------------------------------------------------------
   tool({
     name: "post_story",
@@ -825,6 +1616,16 @@ export const TOOLS: ToolDefinition[] = [
     },
   }),
 
+  tool({
+    name: "get_webhook",
+    title: "Get a webhook endpoint",
+    group: "webhooks",
+    description: "One webhook endpoint: its URL, events and whether it is active. Never its signing secret.",
+    inputSchema: z.object({ webhookEndpointId: id("The webhook endpoint id, from list_webhooks.") }),
+    annotations: READ,
+    run: async (client, a) => ok(await client.webhookEndpoints.get(a.webhookEndpointId)),
+  }),
+
   // ---- projects ------------------------------------------------------------
   tool({
     name: "list_projects",
@@ -865,6 +1666,67 @@ export const TOOLS: ToolDefinition[] = [
     annotations: CONFIGURE,
     run: async (client, a) =>
       ok(await client.projects.create(defined({ name: a.name, externalId: a.externalId, maxAccounts: a.maxAccounts, metadata: a.metadata }), opts(a.idempotencyKey))),
+  }),
+
+  actionTool({
+    name: "manage_project",
+    title: "Update, delete or audit a project",
+    group: "projects",
+    description:
+      "Change a project (rename it, set its external id, metadata or account limit, suspend or resume it), delete it, and list or revoke its API keys. Suspending refuses every send and write in the project while reads and inbound messages keep working. Organization keys only. New project keys are created in the wuapi dashboard: no tool returns an API key.",
+    fields: {
+      projectId: id("The project id or `ext:<externalId>`."),
+      name: z.string().trim().min(1).max(100).describe("The project name."),
+      externalId: z
+        .string()
+        .regex(/^[A-Za-z0-9._:@-]{1,128}$/)
+        .nullable()
+        .describe("Your id for this customer: letters, digits and `. _ : @ -`. null clears it."),
+      metadata: z.record(z.string().min(1).max(64), z.string().max(500)).describe("Your own string values. Replaces the whole metadata object."),
+      maxAccounts: z.number().int().min(0).max(10_000).nullable().describe("How many numbers it may link. null removes the limit."),
+      status: z.enum(["active", "suspended"]).describe("`suspended` refuses sends and writes; `active` resumes."),
+      apiKeyId: id("The API key id, from `list_keys`."),
+      limit,
+      cursor,
+      confirm: confirm("This cannot be undone."),
+    },
+    actions: (act) => ({
+      update: act({
+        summary: "Change any of name, externalId, metadata, maxAccounts and status. Returns the project.",
+        annotations: { ...CONFIGURE, idempotentHint: true },
+        required: ["projectId"],
+        optional: ["name", "externalId", "metadata", "maxAccounts", "status"],
+        run: async (client, a) => {
+          const { projectId: target, action: _action, ...rest } = a;
+          return ok(await client.projects.update(target, changes(rest, "name, externalId, metadata, maxAccounts or status")));
+        },
+      }),
+      delete: act({
+        summary: "Delete the project: its keys stop working at once, and its numbers are logged out and deleted in the background with its webhook endpoints.",
+        annotations: DESTROY_CONFIG,
+        required: ["projectId", "confirm"],
+        run: async (client, a) => {
+          await client.projects.delete(a.projectId);
+          return ok({ projectId: a.projectId, deleted: true });
+        },
+      }),
+      list_keys: act({
+        summary: "The project's API keys, revoked ones included: name, last 4 characters, last use. Never the key itself.",
+        annotations: READ,
+        required: ["projectId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.projects.apiKeys.list(a.projectId, listArgs(a)).page()),
+      }),
+      revoke_key: act({
+        summary: "Revoke one of the project's API keys. It stops working at once.",
+        annotations: DESTROY_CONFIG,
+        required: ["projectId", "apiKeyId", "confirm"],
+        run: async (client, a) => {
+          await client.projects.apiKeys.revoke(a.projectId, a.apiKeyId);
+          return ok({ projectId: a.projectId, apiKeyId: a.apiKeyId, revoked: true });
+        },
+      }),
+    }),
   }),
 
   // ---- invitations ---------------------------------------------------------
@@ -927,6 +1789,47 @@ export const TOOLS: ToolDefinition[] = [
     run: async (client, a) => ok(await client.invitations.cancel(a.invitationId)),
   }),
 
+  tool({
+    name: "resend_invitation",
+    title: "Resend an invitation",
+    group: "invitations",
+    description:
+      "Give an invitation a new link and expiry and email it again when it has an `inviteeEmail`. The previous `url` stops working; send the new one from the result. An account the invitee already started is kept, so they resume where they left off.",
+    inputSchema: z.object({ invitationId: id("The invitation id."), confirm: confirm("The current invitation link stops working."), idempotencyKey }),
+    annotations: { ...DESTROY_CONFIG, idempotentHint: false },
+    run: async (client, a) => ok(await client.invitations.resend(a.invitationId, opts(a.idempotencyKey))),
+  }),
+  actionTool({
+    name: "manage_branding",
+    title: "Manage invitation branding",
+    group: "invitations",
+    description:
+      "How the invitation page and email look to your customers: display name, logo, accent color, support link, and whether the \"Powered by wuapi\" footer shows. Organization keys only.",
+    fields: {
+      displayName: z.string().trim().min(1).max(60).describe("Your name as customers see it. Required the first time."),
+      logoUrl: nullableHttpsUrl.describe("https URL of your logo. null clears it."),
+      accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().describe("`#RRGGBB`. null uses wuapi's."),
+      supportUrl: nullableHttpsUrl.describe("https URL where customers get help. null clears it."),
+      hideWuapiBranding: z.boolean().describe("Hide the \"Powered by wuapi\" footer. `true` needs the White label add-on (`addon_required` otherwise)."),
+    },
+    actions: (act) => ({
+      get: act({
+        summary: "The current branding.",
+        annotations: READ,
+        run: async (client) => ok(await client.branding.get()),
+      }),
+      update: act({
+        summary: "Change any of the fields. Returns the branding.",
+        annotations: { ...CONFIGURE, idempotentHint: true },
+        optional: ["displayName", "logoUrl", "accentColor", "supportUrl", "hideWuapiBranding"],
+        run: async (client, a) => {
+          const { action: _action, ...rest } = a;
+          return ok(await client.branding.update(changes(rest, "displayName, logoUrl, accentColor, supportUrl or hideWuapiBranding")));
+        },
+      }),
+    }),
+  }),
+
   // ---- usage ---------------------------------------------------------------
   tool({
     name: "get_usage",
@@ -968,7 +1871,9 @@ export const TOOL_GROUPS: ToolGroup[] = [
   "messages",
   "chats",
   "contacts",
+  "profile",
   "groups",
+  "channels",
   "stories",
   "webhooks",
   "projects",
