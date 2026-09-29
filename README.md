@@ -17,15 +17,25 @@ Docs: [wuapi.dev/docs/mcp](https://wuapi.dev/docs/mcp).
 | | Local (stdio) | Hosted (Streamable HTTP) |
 |---|---|---|
 | Runs | on your machine: `npx -y @wuapidev/mcp` | at `https://wuapi.dev/api/mcp` |
-| Key | `WUAPI_API_KEY` environment variable | `Authorization: Bearer wu_live_...` header |
+| Key | your `npx wuapi login`, or the `WUAPI_API_KEY` environment variable | `Authorization: Bearer wu_live_...` header |
 | Needs | Node 20 or later | a client that sends custom headers |
 
-Create an API key at [wuapi.dev/app/api-keys](https://wuapi.dev/app/api-keys). A project key limits the server to one project.
+The quickest local setup uses the [`wuapi` CLI](https://www.npmjs.com/package/wuapi): it logs you in from the browser, stores a key on your machine (`~/.config/wuapi/credentials.json`, readable only by you) and registers the server with your client, with no key in the client's config:
+
+```sh
+npx wuapi login
+npx wuapi mcp add          # Claude Code, Cursor or VS Code
+```
+
+The local server uses `WUAPI_API_KEY` when the client sets it, and otherwise that stored login: the current profile, or the one `WUAPI_PROFILE` names (`npx wuapi profiles` lists them). Or create an API key yourself at [wuapi.dev/app/api-keys](https://wuapi.dev/app/api-keys) and pass it as below. A project key limits the server to one project.
 
 ### Claude Code
 
 ```sh
-# Local
+# Local, with the key from `npx wuapi login`
+claude mcp add wuapi -- npx -y @wuapidev/mcp
+
+# Local, with a key in the config
 claude mcp add wuapi --env WUAPI_API_KEY=wu_live_... -- npx -y @wuapidev/mcp
 
 # Hosted
@@ -99,13 +109,14 @@ For the hosted server use `"type": "http"`, `"url": "https://wuapi.dev/api/mcp"`
 
 ### Other clients
 
-Any client that starts a local command works with `npx -y @wuapidev/mcp` and `WUAPI_API_KEY` in its environment. Any client that connects to a remote server with a custom header works with the hosted endpoint. Clients that only connect to remote servers through OAuth, as some chat apps do, cannot use the hosted endpoint yet.
+Any client that starts a local command works with `npx -y @wuapidev/mcp`, with `WUAPI_API_KEY` in its environment or after `npx wuapi login`. Any client that connects to a remote server with a custom header works with the hosted endpoint. Clients that only connect to remote servers through OAuth, as some chat apps do, cannot use the hosted endpoint yet.
 
 ## Configuration
 
 | Variable | |
 |---|---|
-| `WUAPI_API_KEY` | Required. Your API key, `wu_live_...`. |
+| `WUAPI_API_KEY` | Your API key, `wu_live_...`. When unset, the key `npx wuapi login` stored is used. |
+| `WUAPI_PROFILE` | Which stored login to use (`npx wuapi profiles`). Default: the current one. Its project and base URL apply unless the two variables below are set. |
 | `WUAPI_PROJECT` | Act inside one project: its id or `ext:<externalId>`. Sent as `Wuapi-Project`. |
 | `WUAPI_BASE_URL` | API base URL. Default `https://api.wuapi.dev`. Must be https (or http on localhost). |
 | `WUAPI_MCP_READ_ONLY` | `true` registers only the tools that read. Same as the `--read-only` flag. |
@@ -168,7 +179,7 @@ Prompts: `send_message` (to, message), `setup_webhook` (url, events) and `invite
 
 ## Security
 
-- The key stays where you put it: in the client's configuration or a header. The server never logs it, never returns it, and never includes it in an error.
+- The key stays where you put it: in the client's configuration, a header, or the CLI's credentials file (mode 0600), which the server only reads. The server never logs it, never returns it, and never includes it in an error.
 - Tool results never contain secrets. A webhook endpoint's signing secret is returned by the API only once, when the endpoint is created; `create_webhook` drops it and tells you to reveal it in the dashboard instead. There is no tool that creates API keys.
 - Scope the key: a project key reaches one project, and `WUAPI_MCP_READ_ONLY=true` removes every tool that writes.
 - Media is fetched by the wuapi API, never by this server. The API refuses private and internal addresses.
