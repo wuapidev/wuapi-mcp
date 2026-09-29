@@ -1,5 +1,5 @@
 // The stdio server's configuration, from the environment and flags, falling
-// back to the login the `wuapi` CLI stored (`npx wuapi login`). Pure given
+// back to the login the `wuapi` CLI stored (`npx @wuapidev/cli login`). Pure given
 // `loadLogin`, so it is tested without starting a process or touching disk.
 
 import type { StoredLoginResult } from "./login.js";
@@ -53,7 +53,7 @@ export function parseConfig(
   if (!apiKey) {
     return {
       ok: false,
-      error: "no API key: run `npx wuapi login`, or set WUAPI_API_KEY to your wuapi API key (create one at https://wuapi.dev/app/api-keys).",
+      error: "no API key: run `npx @wuapidev/cli login`, or set WUAPI_API_KEY to your wuapi API key (create one at https://wuapi.dev/app/api-keys).",
     };
   }
   if (!/^wu_(live|test)_[A-Za-z0-9]{16,128}$/.test(apiKey)) {

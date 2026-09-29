@@ -1,4 +1,4 @@
-// The login `npx wuapi login` stores (the `wuapi` CLI), read so the stdio
+// The login `npx @wuapidev/cli login` stores (the `wuapi` CLI), read so the stdio
 // server works without WUAPI_API_KEY in the client's config. The path logic is
 // a copy of the CLI's src/paths.ts (packages/wuapi-cli): keep both the same.
 // Read-only: this server never writes or migrates the file.
@@ -66,7 +66,7 @@ export function readStoredLogin(env: Env = process.env, platform: NodeJS.Platfor
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: `${credentialsPath(env, platform, home)} is not valid JSON; run \`npx wuapi login\` again.` };
+    return { ok: false, error: `${credentialsPath(env, platform, home)} is not valid JSON; run \`npx @wuapidev/cli login\` again.` };
   }
   const wanted = env.WUAPI_PROFILE?.trim() || undefined;
   if (raw.version === 2 && raw.profiles && typeof raw.profiles === "object") {
@@ -79,7 +79,7 @@ export function readStoredLogin(env: Env = process.env, platform: NodeJS.Platfor
     return { ok: true, value: current ? fromProfile(current, raw.profiles[current]) : null };
   }
   if (raw.version === 1) {
-    if (wanted) return { ok: false, error: "WUAPI_PROFILE is set but the stored login has no profiles; run `npx wuapi login` again." };
+    if (wanted) return { ok: false, error: "WUAPI_PROFILE is set but the stored login has no profiles; run `npx @wuapidev/cli login` again." };
     return { ok: true, value: fromProfile(null, raw) };
   }
   return { ok: true, value: null };

@@ -65,6 +65,6 @@ describe("the CLI's stored login", () => {
     const none = home();
     const r = parseConfig(none, [], load(none));
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("npx wuapi login");
+    if (!r.ok) expect(r.error).toContain("npx @wuapidev/cli login");
   });
 });

@@ -4,7 +4,7 @@
 //
 // Environment:
 //   WUAPI_API_KEY        an organization or project key (wu_live_...). When
-//                        unset, the login `npx wuapi login` stored is used.
+//                        unset, the login `npx @wuapidev/cli login` stored is used.
 //   WUAPI_PROFILE        optional. Which stored login (profile) to use.
 //   WUAPI_PROJECT        optional. Act inside one project: its id or ext:<externalId>.
 //   WUAPI_BASE_URL       optional. Defaults to https://api.wuapi.dev.
@@ -31,7 +31,7 @@ if (args.includes("--help") || args.includes("-h")) {
       "",
       "Usage: npx -y @wuapidev/mcp [--read-only]",
       "",
-      "  WUAPI_API_KEY        your wuapi API key; without it, the login `npx wuapi login` stored",
+      "  WUAPI_API_KEY        your wuapi API key; without it, the login `npx @wuapidev/cli login` stored",
       "  WUAPI_PROFILE        which stored login (profile) to use; default: the current one",
       "  WUAPI_PROJECT        act inside one project: its id or ext:<externalId>",
       "  WUAPI_BASE_URL       API base URL (default https://api.wuapi.dev)",
