@@ -38,7 +38,7 @@ export function mockClient(): MockClient {
   const resources: Record<string, string[]> = {
     accounts: ["get", "create", "update", "delete", "reconnect", "logout", "createPairingCode", "waitForQrCode", "setPresence", "setDefaultDisappearingTimer"],
     proxyLocations: [],
-    messages: ["send", "get", "edit", "delete", "react", "vote", "star", "unstar", "addLabel", "removeLabel"],
+    messages: ["send", "get", "getMedia", "edit", "delete", "react", "vote", "star", "unstar", "addLabel", "removeLabel"],
     chats: [
       "markRead", "markUnread", "sendReadReceipts", "archive", "unarchive", "pin", "unpin", "mute", "unmute",
       "sendPresence", "delete", "setDisappearingTimer", "addLabel", "removeLabel", "get",
@@ -146,6 +146,7 @@ export function account(overrides: Record<string, unknown> = {}) {
     rejectCallsMessage: null,
     pacing: { messagesPerMinute: 12, firstContactPerMinute: 5, typing: { enabled: true, minMs: 800, maxMs: 6000, charsPerSecond: 25 }, queueTimeoutMinutes: 60, custom: false },
     historySync: "none",
+    mediaAutoDownload: "none",
     metadata: {},
     linkedAt: "2026-09-20T10:00:00.000Z",
     lastConnectedAt: "2026-09-25T10:00:00.000Z",

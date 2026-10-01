@@ -80,6 +80,7 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   sendMessage: ["send_text", "send_media", "send_location", "send_contact", "send_poll", "reply_to_message"],
   listMessages: ["list_messages"],
   getMessage: ["get_message", "reply_to_message", "cancel_message"],
+  getMessageMedia: ["get_message"],
   editMessage: ["edit_message"],
   deleteMessage: ["delete_message", "cancel_message"],
   reactToMessage: ["react_to_message"],

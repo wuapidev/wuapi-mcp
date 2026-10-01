@@ -126,6 +126,26 @@ describe("messages", () => {
     expect((res.structuredContent as { message: { id: string } }).message.id).toBe("msg_1");
   });
 
+  it("get_message fetches on-demand media only when asked", async () => {
+    const media = { url: "https://api.wuapi.dev/v1/messages/msg_1/media", mimeType: "image/jpeg", filename: null, size: 10, downloaded: false };
+    client.messages.get!.mockResolvedValue(message({ type: "image", media }));
+    const file = { object: "media", messageId: "msg_1", url: "https://files.example/x", mimeType: "image/jpeg", filename: null, size: 10 };
+    client.messages.getMedia!.mockResolvedValue(file);
+    const plain = await call("get_message", { messageId: "msg_1" });
+    expect(client.messages.getMedia).not.toHaveBeenCalled();
+    expect((plain.structuredContent as { mediaFile?: unknown }).mediaFile).toBeUndefined();
+    const res = await call("get_message", { messageId: "msg_1", fetchMedia: true });
+    expect(client.messages.getMedia).toHaveBeenCalledWith("msg_1", { redirect: false });
+    expect((res.structuredContent as { mediaFile: { url: string } }).mediaFile.url).toBe("https://files.example/x");
+  });
+
+  it("update_account passes mediaAutoDownload", async () => {
+    client.accounts.update!.mockResolvedValue(account());
+    await call("update_account", { accountId: "acc_1", mediaAutoDownload: { maxBytes: 5242880, types: ["image"] } });
+    expect(client.accounts.update).toHaveBeenCalledWith("acc_1", { mediaAutoDownload: { maxBytes: 5242880, types: ["image"] } });
+    expect(schemaAccepts("update_account", { accountId: "acc_1", mediaAutoDownload: "sometimes" })).toBe(false);
+  });
+
   it("rejects an empty text before calling the API", () => {
     expect(schemaAccepts("send_text", { accountId: "acc_1", to: "+1", text: "" })).toBe(false);
   });

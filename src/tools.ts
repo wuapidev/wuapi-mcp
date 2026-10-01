@@ -441,7 +441,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "Update an account",
     group: "accounts",
     description:
-      "Change an account's settings: rename it, reject incoming calls automatically, turn on and tune its pacing (the anti-ban protections, off by default), choose whether the next link imports recent chats, or move its proxy location. Pacing applies from the next send. A proxy location change gives the number a new exit IP and reconnects it; it is refused within 10 minutes of the previous change. Returns the updated account with its pacing.",
+      "Change an account's settings: rename it, reject incoming calls automatically, turn on and tune its pacing (the anti-ban protections, off by default), choose whether the next link imports recent chats, choose which received media is downloaded right away (the rest on demand), or move its proxy location. Pacing applies from the next send. A proxy location change gives the number a new exit IP and reconnects it; it is refused within 10 minutes of the previous change. Returns the updated account with its pacing.",
     inputSchema: z.object({
       accountId,
       name: z.string().trim().min(1).max(100).optional().describe("A name for the account, such as `Front desk`."),
@@ -452,6 +452,18 @@ export const TOOLS: ToolDefinition[] = [
         .enum(["none", "recent"])
         .optional()
         .describe("`recent` imports the chats the phone sends at the next link. A number that is already linked gets no new history."),
+      mediaAutoDownload: z
+        .union([
+          z.enum(["none", "all"]),
+          z.object({
+            maxBytes: z.number().int().min(1).max(2_000_000_000).describe("Largest file downloaded up front, in bytes."),
+            types: z.array(z.enum(["image", "video", "audio", "document", "sticker"])).min(1).describe("Media types downloaded up front."),
+          }),
+        ])
+        .optional()
+        .describe(
+          "Which received media is downloaded right away through the number's proxy (proxy traffic). `none` (default for new accounts): on demand, when its media URL is first requested. `all`: every file. `{maxBytes, types}`: only those.",
+        ),
       proxyLocation: z
         .object({
           country: z.string().trim().length(2).optional().describe("ISO 3166-1 alpha-2 country code, uppercase. Goes with `city`."),
@@ -464,7 +476,7 @@ export const TOOLS: ToolDefinition[] = [
     annotations: { ...SET, openWorldHint: true },
     run: async (client, a) => {
       const { accountId: target, ...rest } = a;
-      const params = changes(rest, "name, rejectCalls, rejectCallsMessage, pacing, historySync or proxyLocation");
+      const params = changes(rest, "name, rejectCalls, rejectCallsMessage, pacing, historySync, mediaAutoDownload or proxyLocation");
       const loc = a.proxyLocation;
       if (loc) {
         if ((loc.country === undefined) !== (loc.city === undefined)) throw new ToolInputError("`proxyLocation.country` and `proxyLocation.city` go together.");
@@ -713,10 +725,18 @@ export const TOOLS: ToolDefinition[] = [
     name: "get_message",
     title: "Get a message",
     group: "messages",
-    description: "One message with its status (`queued`, `sent`, `delivered`, `read`, `failed`, or `received` for inbound), content, and error when it failed.",
-    inputSchema: z.object({ messageId }),
+    description:
+      "One message with its status (`queued`, `sent`, `delivered`, `read`, `failed`, or `received` for inbound), content, and error when it failed. Received media is on demand by default (`media.downloaded: false`): pass `fetchMedia: true` to download it once and get a direct `mediaFile.url` that needs no API key.",
+    inputSchema: z.object({
+      messageId,
+      fetchMedia: z.boolean().optional().describe("Also download the message's media if needed and return its direct URL as `mediaFile`."),
+    }),
     annotations: READ,
-    run: async (client, a) => ok(await client.messages.get(a.messageId)),
+    run: async (client, a) => {
+      const message = await client.messages.get(a.messageId);
+      if (!a.fetchMedia || !message.media) return ok(message);
+      return ok({ ...message, mediaFile: await client.messages.getMedia(a.messageId, { redirect: false }) });
+    },
   }),
   tool({
     name: "list_messages",
