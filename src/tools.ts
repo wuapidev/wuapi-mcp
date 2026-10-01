@@ -864,10 +864,10 @@ export const TOOLS: ToolDefinition[] = [
     title: "List chats",
     group: "chats",
     description:
-      "An account's conversations, the one with the newest message first: each chat's name, picture id, latest message and WhatsApp's unread, pinned, archived and muted state. Only chats wuapi stored a message of. A state field that is missing (`unread`, `unreadCount`, `pinned`, `archived`, `muted`) was never observed by wuapi, which is not the same as `false`. Filter by `archived`, `unread` or `type`, or search names, numbers and recent text with `q`. Read a conversation with list_messages and the chat's `id` as `chatId`.",
+      "An account's conversations, the one with the newest message first: each chat's name, picture id, latest message and WhatsApp's unread, pinned, archived and muted state. Only chats wuapi stored a message of. A state field that is missing (`unread`, `unreadCount`, `pinned`, `pinnedAt`, `archived`, `muted`) is not known to wuapi yet, which is not the same as `false`. Filter by `archived`, `unread` or `type`, or search names, numbers and recent text with `q`. Read a conversation with list_messages and the chat's `id` as `chatId`.",
     inputSchema: z.object({
       accountId,
-      archived: z.boolean().optional().describe("true: only chats WhatsApp reported as archived. false: every other chat, including those never observed."),
+      archived: z.boolean().optional().describe("true: only chats WhatsApp reported as archived. false: every other chat, including those whose state is not known yet."),
       unread: z.boolean().optional().describe("true: only chats with unread messages or marked as unread. false: every other chat."),
       type: z.enum(["direct", "group", "channel"]).optional().describe("Only chats with a contact, groups, or channels."),
       q: z.string().trim().min(1).max(100).optional().describe("Search the contact or group name, the number, the username and recent message text. Results come best match first."),
@@ -886,7 +886,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "Get a chat",
     group: "chats",
     description:
-      "One conversation of an account: its name, its latest message in full, and WhatsApp's unread, pinned, archived and muted state (a field that is missing was never observed, which is not the same as `false`). A chat wuapi stored no message of answers `not_found`.",
+      "One conversation of an account: its name, its latest message in full, and WhatsApp's unread, pinned, archived and muted state (a field that is missing is not known yet, which is not the same as `false`). A chat wuapi stored no message of answers `not_found`.",
     inputSchema: z.object({ accountId, chatId }),
     annotations: READ,
     run: async (client, a) => ok(await client.chats.get(a.accountId, a.chatId)),
