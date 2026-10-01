@@ -49,6 +49,9 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   addMessageLabel: ["manage_labels.label_message"],
   removeMessageLabel: ["manage_labels.unlabel_message"],
 
+  // uploads
+  createUpload: ["upload_file"],
+
   // stories
   createStory: ["post_story"],
 
@@ -154,12 +157,17 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * Operations with no tool, on purpose. Both answer with a secret shown only
+ * Operations with no tool, on purpose. Two answer with a secret shown only
  * once; tool results never carry secrets (src/format.ts drops them), so a tool
  * would create a key or a signing secret nobody could read, and in the case of
  * the webhook secret break the receiving server's signature check at once.
+ * The other two belong to the upload-URL flow, which needs the raw bytes
+ * posted to a URL: upload_file covers uploads in one call instead.
  */
 export const NOT_EXPOSED: Readonly<Record<string, string>> = {
   createProjectApiKey: "Returns the new API key once. Create project keys in the wuapi dashboard or with the SDK.",
+  completeUpload:
+    "The second step of an upload through an upload URL, after posting the raw bytes to it, which a tool cannot do. upload_file sends the bytes in its one call and returns the upload ready.",
+  getUpload: "upload_file returns the upload already `ready`, with its expiry; there is nothing to poll.",
   rotateWebhookEndpointSecret: "Returns the new signing secret once and the old one stops working. Rotate it in the wuapi dashboard.",
 };

@@ -104,7 +104,7 @@ describe("catalog", () => {
     const names = new Set(TOOLS.map((t) => t.name));
     for (const n of [
       "list_accounts", "get_account", "get_account_qr_code", "create_account", "request_pairing_code",
-      "send_text", "send_media", "send_location", "send_contact", "send_poll", "react_to_message", "reply_to_message",
+      "send_text", "send_media", "upload_file", "send_location", "send_contact", "send_poll", "react_to_message", "reply_to_message",
       "get_message", "list_messages", "edit_message", "delete_message", "cancel_message",
       "list_chats", "get_chat", "mark_chat_read", "archive_chat", "pin_chat", "mute_chat",
       "list_contacts", "get_contact", "check_numbers", "lookup_contacts",
@@ -176,6 +176,35 @@ describe("messages", () => {
       { accountId: "acc_1", to: "+1555", type: "document", media: { url: "https://example.com/a.pdf", filename: "a.pdf" }, text: "Invoice" },
       undefined,
     );
+  });
+
+  it("upload_file uploads the bytes in one call, and send_media sends the upload by id", async () => {
+    client.uploads.create!.mockResolvedValue({ object: "upload", id: "upl_1", status: "ready", mimeType: "image/png", filename: null, size: 3, uploadUrl: null });
+    const res = await call("upload_file", { base64: "cG5n", mimeType: "image/png", filename: "paste.png", idempotencyKey: "u1" });
+    expect(client.uploads.create).toHaveBeenCalledWith({ mimeType: "image/png", base64: "cG5n", filename: "paste.png" }, { idempotencyKey: "u1" });
+    expect((res.structuredContent as { upload: { id: string; status: string } }).upload).toMatchObject({ id: "upl_1", status: "ready" });
+
+    client.messages.send!.mockResolvedValue(message({ type: "voice" }));
+    await call("send_media", { accountId: "acc_1", to: "+1555", type: "voice", uploadId: "upl_1" });
+    expect(client.messages.send).toHaveBeenCalledWith({ accountId: "acc_1", to: "+1555", type: "voice", media: { uploadId: "upl_1" } }, undefined);
+    await call("send_media", { accountId: "acc_1", to: "+1555", type: "image", uploadId: "upl_1", quality: "original" });
+    expect(client.messages.send).toHaveBeenLastCalledWith({ accountId: "acc_1", to: "+1555", type: "image", media: { uploadId: "upl_1", quality: "original" } }, undefined);
+  });
+
+  it("send_media and post_story take exactly one of a URL or an upload", async () => {
+    const both = await call("send_media", { accountId: "a", to: "+1", type: "image", url: "https://example.com/a.jpg", uploadId: "upl_1" });
+    expect(both.isError).toBe(true);
+    expect((await call("send_media", { accountId: "a", to: "+1", type: "image" })).isError).toBe(true);
+    expect(client.messages.send).not.toHaveBeenCalled();
+
+    client.stories.create!.mockResolvedValue(message({ type: "image" }));
+    await call("post_story", { accountId: "a", type: "image", uploadId: "upl_1", text: "hi" });
+    expect(client.stories.create).toHaveBeenLastCalledWith("a", { type: "image", media: { uploadId: "upl_1" }, text: "hi" }, undefined);
+    await call("post_story", { accountId: "a", type: "image", mediaUrl: "https://example.com/a.jpg" });
+    expect(client.stories.create).toHaveBeenLastCalledWith("a", { type: "image", media: { url: "https://example.com/a.jpg" } }, undefined);
+    expect((await call("post_story", { accountId: "a", type: "image" })).isError).toBe(true);
+    expect((await call("post_story", { accountId: "a", type: "image", mediaUrl: "https://example.com/a.jpg", uploadId: "upl_1" })).isError).toBe(true);
+    expect(client.stories.create).toHaveBeenCalledTimes(2);
   });
 
   it("send_media refuses URLs that are not http(s)", () => {

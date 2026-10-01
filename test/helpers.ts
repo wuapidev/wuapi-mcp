@@ -18,6 +18,7 @@ type ResourceName =
   | "groups"
   | "channels"
   | "stories"
+  | "uploads"
   | "webhookEndpoints"
   | "projects"
   | "invitations"
@@ -58,6 +59,7 @@ export function mockClient(): MockClient {
     ],
     channels: ["create", "get", "getInvite", "follow", "unfollow", "mute", "unmute", "react", "markViewed"],
     stories: ["create"],
+    uploads: ["create"],
     webhookEndpoints: ["create", "get", "update", "delete"],
     projects: ["get", "create", "update", "delete", "getUsage"],
     invitations: ["create", "get", "cancel", "resend"],

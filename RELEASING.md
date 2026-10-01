@@ -42,6 +42,14 @@ A new `@wuapidev/sdk` version reaches this package through the `^0.x` range in
 `package.json` without a release here, unless the MCP server needs something
 new from it: then raise the range and bump this version.
 
+When one change raises the SDK range here and publishes that SDK version, the
+mirrors are pushed at the same moment, so this repository's workflows start
+before the SDK is on npm. Their `Wait for the @wuapidev/sdk version this
+package needs` step polls `npm view @wuapidev/sdk@<range>` every 20 seconds for
+up to 10 minutes before `npm install`, and fails with a message naming the
+range if it never appears (then check the SDK mirror's Release run and re-run
+this one).
+
 ## One-time setup
 
 Done once, by an owner of the `wuapidev` GitHub organization and the

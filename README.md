@@ -125,13 +125,13 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 
 ## Tools
 
-76 tools reach every operation of the REST API, except the two that return a secret (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
+77 tools reach every operation of the REST API, except the two that return a secret and the two steps of an upload through an upload URL (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
 
 | Area | Tools |
 |---|---|
 | Context | `get_current_key` |
 | Accounts | `list_accounts`, `get_account`, `get_account_qr_code`, `create_account`, `request_pairing_code`, `reconnect_account`, `list_proxy_locations`, `update_account`, `unlink_account`, `set_presence`, `set_disappearing_timer`, `reject_call` |
-| Messages | `send_text`, `send_media`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message`, `vote_in_poll`, `star_message` |
+| Messages | `send_text`, `send_media`, `upload_file`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message`, `vote_in_poll`, `star_message` |
 | Chats | `list_chats`, `get_chat`, `mark_chat_read`, `send_read_receipts`, `archive_chat`, `pin_chat`, `mute_chat`, `delete_chat`, `manage_labels` |
 | Contacts | `list_contacts`, `get_contact`, `check_numbers`, `lookup_contacts`, `lookup_whatsapp_info`, `manage_block_list` |
 | Profile | `manage_profile`, `manage_privacy` |
@@ -167,7 +167,7 @@ To post to a channel, use `send_text` or `send_media` with `to` set to the chann
 
 `get_account_qr_code` returns the QR code as an image your client can show. Projects, invitations, branding and usage need an organization key.
 
-Not exposed: creating a project API key and rotating a webhook endpoint's signing secret. Both return a secret exactly once, and tool results never carry secrets, so a tool would create a key or secret nobody could read (and a rotation would break your server's signature check at once). Do both in the dashboard or with the SDK. Sending a test webhook event and reading request logs have no public API endpoint; they are in the dashboard.
+Not exposed: creating a project API key and rotating a webhook endpoint's signing secret. Both return a secret exactly once, and tool results never carry secrets, so a tool would create a key or secret nobody could read (and a rotation would break your server's signature check at once). Do both in the dashboard or with the SDK. Also not exposed: completing and reading an upload. They belong to the upload-URL flow, where the file's raw bytes are posted to a URL, which a tool cannot do; `upload_file` takes the bytes in its one call and returns the upload ready to send. Sending a test webhook event and reading request logs have no public API endpoint; they are in the dashboard.
 
 `src/operations.ts` maps every API operation to the tools that call it; a test keeps it equal to the OpenAPI spec.
 

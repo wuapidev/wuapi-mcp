@@ -135,6 +135,12 @@ const mediaUrl = z
   .max(2048)
   .regex(/^https?:\/\//i, "Must be an http(s) URL.")
   .describe("Public http(s) URL of the file. wuapi downloads it (up to 100 MB); private and internal addresses are refused.");
+const uploadId = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .describe("The id of an upload made with upload_file (or `POST /v1/uploads`): a file wuapi already stores. Usable for 24 hours, any number of times.");
 const proxyLocation = z
   .object({
     country: z.string().trim().length(2).describe("ISO 3166-1 alpha-2 country code, uppercase: `US`."),
@@ -620,13 +626,14 @@ export const TOOLS: ToolDefinition[] = [
     title: "Send an image, video, audio or document",
     group: "messages",
     description:
-      "Send a file from a public URL: an image, video, audio, voice note (ogg/opus), document or sticker, with an optional caption. wuapi downloads the URL itself. Images go out at the account's image quality (`standard` by default, as WhatsApp sends a photo); pass `quality` to change it for one image, or send the file as a `document` to deliver it untouched.",
+      "Send a file: an image, video, audio, voice note (ogg/opus), document or sticker, with an optional caption. Give exactly one of `url` (a public URL wuapi downloads itself) or `uploadId` (a file uploaded before with upload_file). Images go out at the account's image quality (`standard` by default, as WhatsApp sends a photo); pass `quality` to change it for one image, or send the file as a `document` to deliver it untouched.",
     inputSchema: z.object({
       ...sendBase,
       type: z.enum(["image", "video", "audio", "voice", "document", "sticker"]).describe("What kind of file it is."),
-      url: mediaUrl,
+      url: mediaUrl.optional(),
+      uploadId: uploadId.optional(),
       caption: z.string().max(4096).optional().describe("Text shown with the file."),
-      mimeType: z.string().trim().max(255).optional().describe("Guessed from the URL when omitted."),
+      mimeType: z.string().trim().max(255).optional().describe("Guessed from the URL, or the upload's own type, when omitted."),
       filename: z.string().trim().max(255).optional().describe("Documents: the file name the recipient sees."),
       viewOnce: z.boolean().optional().describe("Images, videos, audio and voice: can be opened once."),
       quality: z
@@ -636,11 +643,28 @@ export const TOOLS: ToolDefinition[] = [
     }),
     annotations: ACT,
     run: (client, a) => {
-      const media = defined({ url: a.url, mimeType: a.mimeType, filename: a.filename, quality: a.type === "image" ? a.quality : undefined });
+      if ((a.url === undefined) === (a.uploadId === undefined)) throw new ToolInputError("Give exactly one of `url` or `uploadId`.");
+      const media = defined({ url: a.url, uploadId: a.uploadId, mimeType: a.mimeType, filename: a.filename, quality: a.type === "image" ? a.quality : undefined });
       const viewOnce = a.type === "image" || a.type === "video" || a.type === "audio" || a.type === "voice" ? a.viewOnce : undefined;
       const params = defined({ ...base(a), type: a.type, media, text: a.caption, viewOnce }) as SendMessageParams;
       return send(client, params, a.idempotencyKey);
     },
+  }),
+  tool({
+    name: "upload_file",
+    title: "Upload a file to send",
+    group: "messages",
+    description:
+      "Upload a file whose bytes you have (not a URL) so it can be sent: returns an upload whose `id` goes in `uploadId` of send_media or post_story. The file can be sent for 24 hours, to any number of chats. Up to 5 MB; the hosted server takes requests up to 1 MB, so about 700 KB of file there. For a file that is already at a public URL, skip this and pass the URL to send_media.",
+    inputSchema: z.object({
+      base64: z.string().trim().min(1).max(7_000_000).describe("The file's bytes in base64."),
+      mimeType: z.string().trim().min(3).max(255).describe("The file's MIME type: `image/jpeg`, `application/pdf`, `audio/ogg; codecs=opus` for a voice note."),
+      filename: z.string().trim().min(1).max(255).optional().describe("Documents: the file name the recipient sees."),
+      idempotencyKey,
+    }),
+    annotations: CONFIGURE,
+    run: async (client, a) =>
+      ok({ upload: await client.uploads.create(defined({ mimeType: a.mimeType, base64: a.base64, filename: a.filename }), opts(a.idempotencyKey)) }),
   }),
   tool({
     name: "send_location",
@@ -1630,12 +1654,14 @@ export const TOOLS: ToolDefinition[] = [
     name: "post_story",
     title: "Post a story",
     group: "stories",
-    description: "Post a story from the account: text on a colored background, or an image or video from a public URL with an optional caption.",
+    description:
+      "Post a story from the account: text on a colored background, or an image or video with an optional caption, from a public URL (`mediaUrl`) or a file uploaded with upload_file (`uploadId`).",
     inputSchema: z.object({
       accountId,
       type: z.enum(["text", "image", "video"]).optional().describe("Default `text`."),
       text: z.string().max(4096).optional().describe("The story text (required for `text`), or the caption."),
       mediaUrl: mediaUrl.optional().describe("Image or video: public http(s) URL of the file."),
+      uploadId: uploadId.optional(),
       backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().describe("Text stories: `#RRGGBB`."),
       idempotencyKey,
     }),
@@ -1646,8 +1672,9 @@ export const TOOLS: ToolDefinition[] = [
         if (!a.text || !a.text.trim()) throw new ToolInputError("A text story needs `text`.");
         return ok({ message: await client.stories.create(a.accountId, defined({ type, text: a.text, backgroundColor: a.backgroundColor }), opts(a.idempotencyKey)) });
       }
-      if (!a.mediaUrl) throw new ToolInputError(`An ${type} story needs \`mediaUrl\`.`);
-      return ok({ message: await client.stories.create(a.accountId, defined({ type, media: { url: a.mediaUrl }, text: a.text }), opts(a.idempotencyKey)) });
+      if ((a.mediaUrl === undefined) === (a.uploadId === undefined)) throw new ToolInputError(`An ${type} story needs exactly one of \`mediaUrl\` or \`uploadId\`.`);
+      const media = a.uploadId !== undefined ? { uploadId: a.uploadId } : { url: a.mediaUrl as string };
+      return ok({ message: await client.stories.create(a.accountId, defined({ type, media, text: a.text }), opts(a.idempotencyKey)) });
     },
   }),
 
