@@ -41,7 +41,7 @@ export function mockClient(): MockClient {
     messages: ["send", "get", "edit", "delete", "react", "vote", "star", "unstar", "addLabel", "removeLabel"],
     chats: [
       "markRead", "markUnread", "sendReadReceipts", "archive", "unarchive", "pin", "unpin", "mute", "unmute",
-      "sendPresence", "delete", "setDisappearingTimer", "addLabel", "removeLabel",
+      "sendPresence", "delete", "setDisappearingTimer", "addLabel", "removeLabel", "get",
     ],
     contacts: ["check", "lookup", "getPicture", "getBusinessProfile", "subscribePresence", "block", "unblock", "getLink", "resetLink", "resolveLink"],
     bots: [],
@@ -68,6 +68,7 @@ export function mockClient(): MockClient {
     accounts: ["list"],
     proxyLocations: ["list"],
     messages: ["list"],
+    chats: ["list"],
     contacts: ["listBlocked"],
     bots: ["list"],
     groups: ["list", "listJoinRequests", "listSubgroups", "listCommunityParticipants"],

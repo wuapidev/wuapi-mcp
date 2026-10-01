@@ -26,6 +26,8 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   rejectCall: ["reject_call"],
 
   // chats
+  listChats: ["list_chats"],
+  getChat: ["get_chat"],
   sendChatPresence: ["set_presence.typing", "set_presence.recording", "set_presence.paused"],
   sendReadReceipts: ["send_read_receipts"],
   markChatRead: ["mark_chat_read"],

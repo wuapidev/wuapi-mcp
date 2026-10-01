@@ -106,7 +106,7 @@ describe("catalog", () => {
       "list_accounts", "get_account", "get_account_qr_code", "create_account", "request_pairing_code",
       "send_text", "send_media", "send_location", "send_contact", "send_poll", "react_to_message", "reply_to_message",
       "get_message", "list_messages", "edit_message", "delete_message", "cancel_message",
-      "mark_chat_read", "archive_chat", "pin_chat", "mute_chat",
+      "list_chats", "get_chat", "mark_chat_read", "archive_chat", "pin_chat", "mute_chat",
       "check_numbers", "lookup_contacts",
       "create_group", "get_group", "add_group_participants", "remove_group_participants", "promote_group_participants", "demote_group_participants", "get_group_invite_link", "leave_group",
       "post_story", "list_webhooks", "create_webhook", "update_webhook", "delete_webhook",
@@ -246,6 +246,34 @@ describe("accounts", () => {
 });
 
 describe("chats, contacts and groups", () => {
+  it("list_chats sends the filters and keeps the latest message short", async () => {
+    const chat = {
+      object: "chat", id: "+584241112233", projectId: null, accountId: "a", type: "direct", name: "Maria", savedName: "Maria", profileName: "Maria G.",
+      username: null, lastMessage: message({ id: "m_9", text: "ok", direction: "inbound", status: "received" }), lastMessageAt: "2026-09-24T08:21:05.000Z",
+      unread: true, unreadCount: 2, pinned: null, archived: null, muted: null, muteExpiresAt: null,
+    };
+    listPage(client.chats.list!, [chat], "cur_2");
+    const res = await call("list_chats", { accountId: "a", unread: true, type: "direct", q: "maria" });
+    expect(client.chats.list).toHaveBeenCalledWith("a", { unread: true, type: "direct", q: "maria", limit: 20 });
+    const out = res.structuredContent as { items: Array<Record<string, unknown>>; nextCursor: string; hasMore: boolean };
+    expect(out).toMatchObject({ nextCursor: "cur_2", hasMore: true });
+    expect(out.items[0]).toMatchObject({ id: "+584241112233", name: "Maria", unread: true, unreadCount: 2 });
+    expect(out.items[0]!.lastMessage).toEqual({ id: "m_9", direction: "inbound", from: chat.lastMessage.from, type: "text", text: "ok", status: "received" });
+
+    await call("list_chats", { accountId: "a", archived: false });
+    expect(client.chats.list).toHaveBeenLastCalledWith("a", { archived: false, limit: 20 });
+  });
+
+  it("get_chat returns the chat with its latest message", async () => {
+    client.chats.get!.mockResolvedValue({ object: "chat", id: "+1", lastMessage: message({ id: "m_9" }), pinned: false, archived: null });
+    const res = await call("get_chat", { accountId: "a", chatId: "+1" });
+    expect(client.chats.get).toHaveBeenCalledWith("a", "+1");
+    const out = res.structuredContent as Record<string, unknown>;
+    expect(out).toMatchObject({ id: "+1", pinned: false, lastMessage: { id: "m_9", chatId: "+584241112233" } });
+    // A state wuapi never observed is left out, not reported as false.
+    expect(out).not.toHaveProperty("archived");
+  });
+
   it("archive_chat, pin_chat and mute_chat pick the right call", async () => {
     await call("archive_chat", { accountId: "a", chatId: "+1" });
     expect(client.chats.archive).toHaveBeenCalledWith("a", "+1");

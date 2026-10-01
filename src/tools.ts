@@ -1,4 +1,4 @@
-import type { Account, AccountUpdateParams, Group, Message, PictureInput, SendMessageParams, Wuapi } from "@wuapidev/sdk";
+import type { Account, AccountUpdateParams, Chat, Group, Message, PictureInput, SendMessageParams, Wuapi } from "@wuapidev/sdk";
 import { WEBHOOK_EVENT_TYPES, WuapiError } from "@wuapidev/sdk";
 import * as z from "zod";
 import { actionTool, type ActionToolInfo } from "./actions.js";
@@ -253,6 +253,15 @@ function slimAccount(a: Account): Record<string, unknown> {
 function slimGroup(g: Group): Record<string, unknown> {
   const { participants, ...rest } = g;
   return { ...rest, participantCount: participants?.length ?? 0 };
+}
+
+/** A chat in a list: its latest message cut down to what tells the conversation apart. */
+function slimChat(c: Chat): Record<string, unknown> {
+  const m = c.lastMessage;
+  return {
+    ...c,
+    lastMessage: m ? { id: m.id, direction: m.direction, from: m.from, type: m.type, text: m.text, status: m.status } : null,
+  };
 }
 
 function sent(message: Message): ToolResult {
@@ -714,7 +723,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "List messages",
     group: "messages",
     description:
-      "Messages wuapi stored, newest first: sent and received. Filter by account, chat and direction to read a conversation. There is no endpoint that lists chats; recent messages show who wrote.",
+      "Messages wuapi stored, newest first: sent and received. Filter by account, chat and direction to read a conversation. Use list_chats to see which conversations an account has.",
     inputSchema: z.object({
       accountId: accountId.optional(),
       chatId: chatId.optional(),
@@ -796,6 +805,38 @@ export const TOOLS: ToolDefinition[] = [
   }),
 
   // ---- chats ---------------------------------------------------------------
+  tool({
+    name: "list_chats",
+    title: "List chats",
+    group: "chats",
+    description:
+      "An account's conversations, the one with the newest message first: each chat's name, latest message and WhatsApp's unread, pinned, archived and muted state. Only chats wuapi stored a message of. A state field that is missing (`unread`, `unreadCount`, `pinned`, `archived`, `muted`) was never observed by wuapi, which is not the same as `false`. Filter by `archived`, `unread` or `type`, or search names, numbers and recent text with `q`. Read a conversation with list_messages and the chat's `id` as `chatId`.",
+    inputSchema: z.object({
+      accountId,
+      archived: z.boolean().optional().describe("true: only chats WhatsApp reported as archived. false: every other chat, including those never observed."),
+      unread: z.boolean().optional().describe("true: only chats with unread messages or marked as unread. false: every other chat."),
+      type: z.enum(["direct", "group", "channel"]).optional().describe("Only chats with a contact, groups, or channels."),
+      q: z.string().trim().min(1).max(100).optional().describe("Search the contact or group name, the number, the username and recent message text. Results come best match first."),
+      limit,
+      cursor,
+    }),
+    annotations: READ,
+    run: async (client, a) =>
+      page(
+        await client.chats.list(a.accountId, defined({ archived: a.archived, unread: a.unread, type: a.type, q: a.q, ...listArgs(a) })).page(),
+        (c) => slimChat(c),
+      ),
+  }),
+  tool({
+    name: "get_chat",
+    title: "Get a chat",
+    group: "chats",
+    description:
+      "One conversation of an account: its name, its latest message in full, and WhatsApp's unread, pinned, archived and muted state (a field that is missing was never observed, which is not the same as `false`). A chat wuapi stored no message of answers `not_found`.",
+    inputSchema: z.object({ accountId, chatId }),
+    annotations: READ,
+    run: async (client, a) => ok(await client.chats.get(a.accountId, a.chatId)),
+  }),
   tool({
     name: "mark_chat_read",
     title: "Mark a chat read or unread",
