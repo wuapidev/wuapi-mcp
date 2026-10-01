@@ -441,7 +441,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "Update an account",
     group: "accounts",
     description:
-      "Change an account's settings: rename it, reject incoming calls automatically, turn on and tune its pacing (the anti-ban protections, off by default), choose whether the next link imports recent chats, choose which received media is downloaded right away (the rest on demand), or move its proxy location. Pacing applies from the next send. A proxy location change gives the number a new exit IP and reconnects it; it is refused within 10 minutes of the previous change. Returns the updated account with its pacing.",
+      "Change an account's settings: rename it, reject incoming calls automatically, turn on and tune its pacing (the anti-ban protections, off by default), choose whether the next link imports recent chats, choose which received media is downloaded right away (the rest on demand), choose the quality its images are sent at, or move its proxy location. Pacing applies from the next send. A proxy location change gives the number a new exit IP and reconnects it; it is refused within 10 minutes of the previous change. Returns the updated account with its pacing.",
     inputSchema: z.object({
       accountId,
       name: z.string().trim().min(1).max(100).optional().describe("A name for the account, such as `Front desk`."),
@@ -464,6 +464,12 @@ export const TOOLS: ToolDefinition[] = [
         .describe(
           "Which received media is downloaded right away through the number's proxy (proxy traffic). `none` (default for new accounts): on demand, when its media URL is first requested. `all`: every file. `{maxBytes, types}`: only those.",
         ),
+      imageQuality: z
+        .enum(["standard", "hd", "original"])
+        .optional()
+        .describe(
+          "What the account's images are re-encoded to before their upload through the number's proxy (proxy traffic). `standard` (default): longest side 1600 px, JPEG, as WhatsApp sends a photo. `hd`: up to 4096 px. `original`: the file as it is.",
+        ),
       proxyLocation: z
         .object({
           country: z.string().trim().length(2).optional().describe("ISO 3166-1 alpha-2 country code, uppercase. Goes with `city`."),
@@ -476,7 +482,7 @@ export const TOOLS: ToolDefinition[] = [
     annotations: { ...SET, openWorldHint: true },
     run: async (client, a) => {
       const { accountId: target, ...rest } = a;
-      const params = changes(rest, "name, rejectCalls, rejectCallsMessage, pacing, historySync, mediaAutoDownload or proxyLocation");
+      const params = changes(rest, "name, rejectCalls, rejectCallsMessage, pacing, historySync, mediaAutoDownload, imageQuality or proxyLocation");
       const loc = a.proxyLocation;
       if (loc) {
         if ((loc.country === undefined) !== (loc.city === undefined)) throw new ToolInputError("`proxyLocation.country` and `proxyLocation.city` go together.");
@@ -614,7 +620,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "Send an image, video, audio or document",
     group: "messages",
     description:
-      "Send a file from a public URL: an image, video, audio, voice note (ogg/opus), document or sticker, with an optional caption. wuapi downloads the URL itself.",
+      "Send a file from a public URL: an image, video, audio, voice note (ogg/opus), document or sticker, with an optional caption. wuapi downloads the URL itself. Images go out at the account's image quality (`standard` by default, as WhatsApp sends a photo); pass `quality` to change it for one image, or send the file as a `document` to deliver it untouched.",
     inputSchema: z.object({
       ...sendBase,
       type: z.enum(["image", "video", "audio", "voice", "document", "sticker"]).describe("What kind of file it is."),
@@ -623,10 +629,14 @@ export const TOOLS: ToolDefinition[] = [
       mimeType: z.string().trim().max(255).optional().describe("Guessed from the URL when omitted."),
       filename: z.string().trim().max(255).optional().describe("Documents: the file name the recipient sees."),
       viewOnce: z.boolean().optional().describe("Images, videos, audio and voice: can be opened once."),
+      quality: z
+        .enum(["standard", "hd", "original"])
+        .optional()
+        .describe("Images only: the quality of this image instead of the account's. `hd` is WhatsApp's HD photo; `original` sends the file without re-encoding it."),
     }),
     annotations: ACT,
     run: (client, a) => {
-      const media = defined({ url: a.url, mimeType: a.mimeType, filename: a.filename });
+      const media = defined({ url: a.url, mimeType: a.mimeType, filename: a.filename, quality: a.type === "image" ? a.quality : undefined });
       const viewOnce = a.type === "image" || a.type === "video" || a.type === "audio" || a.type === "voice" ? a.viewOnce : undefined;
       const params = defined({ ...base(a), type: a.type, media, text: a.caption, viewOnce }) as SendMessageParams;
       return send(client, params, a.idempotencyKey);

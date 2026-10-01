@@ -146,6 +146,25 @@ describe("messages", () => {
     expect(schemaAccepts("update_account", { accountId: "acc_1", mediaAutoDownload: "sometimes" })).toBe(false);
   });
 
+  it("update_account passes imageQuality", async () => {
+    client.accounts.update!.mockResolvedValue(account());
+    await call("update_account", { accountId: "acc_1", imageQuality: "hd" });
+    expect(client.accounts.update).toHaveBeenCalledWith("acc_1", { imageQuality: "hd" });
+    expect(schemaAccepts("update_account", { accountId: "acc_1", imageQuality: "best" })).toBe(false);
+  });
+
+  it("send_media passes quality for an image and drops it for other files", async () => {
+    client.messages.send!.mockResolvedValue(message({ type: "image" }));
+    await call("send_media", { accountId: "acc_1", to: "+1555", type: "image", url: "https://example.com/a.jpg", quality: "hd" });
+    expect(client.messages.send).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: "image", media: { url: "https://example.com/a.jpg", quality: "hd" } }),
+      undefined,
+    );
+    await call("send_media", { accountId: "acc_1", to: "+1555", type: "video", url: "https://example.com/a.mp4", quality: "hd" });
+    expect(client.messages.send).toHaveBeenLastCalledWith(expect.objectContaining({ type: "video", media: { url: "https://example.com/a.mp4" } }), undefined);
+    expect(schemaAccepts("send_media", { accountId: "a", to: "+1", type: "image", url: "https://example.com/a.jpg", quality: "best" })).toBe(false);
+  });
+
   it("rejects an empty text before calling the API", () => {
     expect(schemaAccepts("send_text", { accountId: "acc_1", to: "+1", text: "" })).toBe(false);
   });

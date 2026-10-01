@@ -147,6 +147,7 @@ export function account(overrides: Record<string, unknown> = {}) {
     pacing: { messagesPerMinute: 12, firstContactPerMinute: 5, typing: { enabled: true, minMs: 800, maxMs: 6000, charsPerSecond: 25 }, queueTimeoutMinutes: 60, custom: false },
     historySync: "none",
     mediaAutoDownload: "none",
+    imageQuality: "standard",
     metadata: {},
     linkedAt: "2026-09-20T10:00:00.000Z",
     lastConnectedAt: "2026-09-25T10:00:00.000Z",
