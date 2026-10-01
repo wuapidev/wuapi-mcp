@@ -125,7 +125,7 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 
 ## Tools
 
-74 tools reach every operation of the REST API, except the two that return a secret (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
+76 tools reach every operation of the REST API, except the two that return a secret (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
 
 | Area | Tools |
 |---|---|
@@ -133,7 +133,7 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 | Accounts | `list_accounts`, `get_account`, `get_account_qr_code`, `create_account`, `request_pairing_code`, `reconnect_account`, `list_proxy_locations`, `update_account`, `unlink_account`, `set_presence`, `set_disappearing_timer`, `reject_call` |
 | Messages | `send_text`, `send_media`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message`, `vote_in_poll`, `star_message` |
 | Chats | `list_chats`, `get_chat`, `mark_chat_read`, `send_read_receipts`, `archive_chat`, `pin_chat`, `mute_chat`, `delete_chat`, `manage_labels` |
-| Contacts | `check_numbers`, `lookup_contacts`, `lookup_whatsapp_info`, `manage_block_list` |
+| Contacts | `list_contacts`, `get_contact`, `check_numbers`, `lookup_contacts`, `lookup_whatsapp_info`, `manage_block_list` |
 | Profile | `manage_profile`, `manage_privacy` |
 | Groups | `list_groups`, `get_group`, `create_group`, `add_group_participants`, `remove_group_participants`, `promote_group_participants`, `demote_group_participants`, `get_group_invite_link`, `reset_group_invite_link`, `leave_group`, `manage_group_settings`, `manage_group_joins`, `manage_community` |
 | Channels | `manage_channel` |

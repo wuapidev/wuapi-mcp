@@ -53,6 +53,8 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   createStory: ["post_story"],
 
   // contacts
+  listContacts: ["list_contacts"],
+  getContact: ["get_contact"],
   checkContacts: ["check_numbers"],
   lookupContacts: ["lookup_contacts"],
   getContactPicture: ["lookup_whatsapp_info.contact_picture"],

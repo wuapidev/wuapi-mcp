@@ -830,7 +830,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "List chats",
     group: "chats",
     description:
-      "An account's conversations, the one with the newest message first: each chat's name, latest message and WhatsApp's unread, pinned, archived and muted state. Only chats wuapi stored a message of. A state field that is missing (`unread`, `unreadCount`, `pinned`, `archived`, `muted`) was never observed by wuapi, which is not the same as `false`. Filter by `archived`, `unread` or `type`, or search names, numbers and recent text with `q`. Read a conversation with list_messages and the chat's `id` as `chatId`.",
+      "An account's conversations, the one with the newest message first: each chat's name, picture id, latest message and WhatsApp's unread, pinned, archived and muted state. Only chats wuapi stored a message of. A state field that is missing (`unread`, `unreadCount`, `pinned`, `archived`, `muted`) was never observed by wuapi, which is not the same as `false`. Filter by `archived`, `unread` or `type`, or search names, numbers and recent text with `q`. Read a conversation with list_messages and the chat's `id` as `chatId`.",
     inputSchema: z.object({
       accountId,
       archived: z.boolean().optional().describe("true: only chats WhatsApp reported as archived. false: every other chat, including those never observed."),
@@ -1022,6 +1022,31 @@ export const TOOLS: ToolDefinition[] = [
 
   // ---- contacts ------------------------------------------------------------
   tool({
+    name: "list_contacts",
+    title: "List contacts",
+    group: "contacts",
+    description:
+      "An account's address book as its phone synced it to wuapi, ordered by saved name: each contact's id, number, `savedName`, WhatsApp profile name, and the username and picture id seen so far. Only contacts the phone saved (or that have a business name); people the account just chatted with are in list_chats. Read from what wuapi stored, so `about` and `deviceCount` are not here: lookup_contacts asks WhatsApp for those. Search names, usernames and numbers with `q`.",
+    inputSchema: z.object({
+      accountId,
+      q: z.string().trim().min(1).max(100).optional().describe("Search the saved name, profile name, business name, username or number. Results come best match first."),
+      limit,
+      cursor,
+    }),
+    annotations: READ,
+    run: async (client, a) => page(await client.contacts.list(a.accountId, defined({ q: a.q, ...listArgs(a) })).page()),
+  }),
+  tool({
+    name: "get_contact",
+    title: "Get a contact",
+    group: "contacts",
+    description:
+      "One contact of an account's address book, by number or `lid:` id: its saved name, profile name, username and picture id as wuapi stored them. A number that is not saved on the phone answers `not_found`; lookup_contacts asks WhatsApp about any number.",
+    inputSchema: z.object({ accountId, contactId }),
+    annotations: READ,
+    run: async (client, a) => ok(await client.contacts.get(a.accountId, a.contactId)),
+  }),
+  tool({
     name: "check_numbers",
     title: "Check numbers on WhatsApp",
     group: "contacts",
@@ -1038,7 +1063,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "Look up contacts",
     group: "contacts",
     description:
-      "About text, WhatsApp username, business name and device count of 1 to 50 contacts. Usernames cannot be searched: WhatsApp does not let a linked device resolve an @username, so look contacts up by number or `lid:` id.",
+      "About text, picture id, WhatsApp username, business name and device count of 1 to 50 contacts, asked from WhatsApp (the saved names are in list_contacts). Usernames cannot be searched: WhatsApp does not let a linked device resolve an @username, so look contacts up by number or `lid:` id.",
     inputSchema: z.object({
       accountId,
       contactIds: z.array(z.string().trim().min(1).max(200)).min(1).max(50).describe("1 to 50 contact ids: E.164, digits or `lid:<digits>`."),
