@@ -77,7 +77,7 @@ describe("catalog", () => {
     expect(destructive.sort()).toEqual(
       [
         "manage_block_list.block", "manage_group_settings.delete_picture", "manage_labels.delete", "manage_profile.delete_picture",
-        "manage_profile.reset_contact_link", "manage_project.delete", "manage_project.revoke_key", "unlink_account.delete", "unlink_account.logout",
+        "manage_profile.reset_contact_link", "manage_project.delete", "manage_project.revoke_key", "manage_stories.delete", "unlink_account.delete", "unlink_account.logout",
       ].sort(),
     );
   });
@@ -205,6 +205,51 @@ describe("messages", () => {
     expect((await call("post_story", { accountId: "a", type: "image" })).isError).toBe(true);
     expect((await call("post_story", { accountId: "a", type: "image", mediaUrl: "https://example.com/a.jpg", uploadId: "upl_1" })).isError).toBe(true);
     expect(client.stories.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("manage_stories reads stories without viewing them, and views, reacts and replies only when asked", async () => {
+    const story = { object: "story", id: "st_1", accountId: "a", contactId: "+584241112233", own: false, type: "image", media: { downloaded: false }, viewedAt: null };
+    const pageOf = listPage(client.stories.list!, [{ object: "story_group", contactId: "+584241112233", stories: [story] }]);
+    const listed = await call("manage_stories", { action: "list", accountId: "a", unviewed: true, limit: 5 });
+    expect(client.stories.list).toHaveBeenCalledWith("a", { unviewed: true, limit: 5 });
+    expect(pageOf).toHaveBeenCalledTimes(1);
+    expect((listed.structuredContent as { items: unknown[] }).items).toHaveLength(1);
+
+    client.stories.get!.mockResolvedValue(story);
+    client.stories.getMedia!.mockResolvedValue({ object: "media", storyId: "st_1", url: "https://files.example/x" });
+    const got = await call("manage_stories", { action: "get", accountId: "a", storyId: "st_1", fetchMedia: true });
+    expect(client.stories.getMedia).toHaveBeenCalledWith("a", "st_1", { redirect: false });
+    expect((got.structuredContent as { mediaFile: { url: string } }).mediaFile.url).toBe("https://files.example/x");
+    await call("manage_stories", { action: "list_own", accountId: "a" });
+    await call("manage_stories", { action: "viewers", accountId: "a", storyId: "st_1" });
+    expect(client.stories.listViewers).toHaveBeenCalledWith("a", "st_1", { limit: 20 });
+    // Nothing so far told the contact anything.
+    expect(client.stories.view).not.toHaveBeenCalled();
+
+    client.stories.view!.mockResolvedValue({ ...story, viewedAt: "2026-10-01T12:00:00.000Z", authorNotified: true });
+    const viewed = await call("manage_stories", { action: "view", accountId: "a", storyId: "st_1" });
+    expect(client.stories.view).toHaveBeenCalledWith("a", "st_1", undefined);
+    expect((viewed.structuredContent as { authorNotified: boolean }).authorNotified).toBe(true);
+
+    await call("manage_stories", { action: "react", accountId: "a", storyId: "st_1", emoji: "💚" });
+    expect(client.stories.react).toHaveBeenCalledWith("a", "st_1", { emoji: "💚" });
+
+    client.messages.send!.mockResolvedValue(message());
+    await call("manage_stories", { action: "reply", accountId: "a", storyId: "st_1", text: "Looks great", idempotencyKey: "k" });
+    expect(client.messages.send).toHaveBeenLastCalledWith(
+      { accountId: "a", to: "+584241112233", type: "text", text: "Looks great", replyToStoryId: "st_1" },
+      { idempotencyKey: "k" },
+    );
+    // The account's own story takes no reply.
+    client.stories.get!.mockResolvedValue({ ...story, own: true });
+    expect((await call("manage_stories", { action: "reply", accountId: "a", storyId: "st_1", text: "x" })).isError).toBe(true);
+    expect(client.messages.send).toHaveBeenCalledTimes(1);
+
+    // Deleting needs confirm.
+    expect((await call("manage_stories", { action: "delete", accountId: "a", storyId: "st_1" })).isError).toBe(true);
+    expect(client.stories.delete).not.toHaveBeenCalled();
+    await call("manage_stories", { action: "delete", accountId: "a", storyId: "st_1", confirm: true });
+    expect(client.stories.delete).toHaveBeenCalledWith("a", "st_1");
   });
 
   it("send_media refuses URLs that are not http(s)", () => {

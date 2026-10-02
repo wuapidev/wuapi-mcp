@@ -14,6 +14,7 @@ type ResourceName =
   | "labels"
   | "calls"
   | "stickerPacks"
+  | "favoriteStickers"
   | "orders"
   | "groups"
   | "channels"
@@ -39,7 +40,7 @@ export function mockClient(): MockClient {
   const resources: Record<string, string[]> = {
     accounts: ["get", "create", "update", "delete", "reconnect", "logout", "createPairingCode", "waitForQrCode", "setPresence", "setDefaultDisappearingTimer"],
     proxyLocations: [],
-    messages: ["send", "get", "getMedia", "edit", "delete", "react", "vote", "star", "unstar", "addLabel", "removeLabel"],
+    messages: ["send", "get", "getMedia", "edit", "delete", "react", "vote", "forward", "star", "unstar", "addLabel", "removeLabel"],
     chats: [
       "markRead", "markUnread", "sendReadReceipts", "archive", "unarchive", "pin", "unpin", "mute", "unmute",
       "sendPresence", "delete", "setDisappearingTimer", "addLabel", "removeLabel", "get",
@@ -51,6 +52,7 @@ export function mockClient(): MockClient {
     labels: ["upsert", "delete"],
     calls: ["reject"],
     stickerPacks: ["get"],
+    favoriteStickers: ["add", "remove", "getMedia"],
     orders: ["get"],
     groups: [
       "get", "create", "update", "addParticipants", "removeParticipants", "promoteParticipants", "demoteParticipants",
@@ -58,7 +60,7 @@ export function mockClient(): MockClient {
       "approveJoinRequests", "rejectJoinRequests", "linkSubgroup", "unlinkSubgroup",
     ],
     channels: ["create", "get", "getInvite", "follow", "unfollow", "mute", "unmute", "react", "markViewed"],
-    stories: ["create"],
+    stories: ["create", "get", "getMedia", "view", "react", "delete"],
     uploads: ["create"],
     webhookEndpoints: ["create", "get", "update", "delete"],
     projects: ["get", "create", "update", "delete", "getUsage"],
@@ -73,8 +75,10 @@ export function mockClient(): MockClient {
     chats: ["list"],
     contacts: ["list", "listBlocked"],
     bots: ["list"],
+    favoriteStickers: ["list"],
     groups: ["list", "listJoinRequests", "listSubgroups", "listCommunityParticipants"],
     channels: ["list", "listMessages"],
+    stories: ["list", "listOwn", "listViewers"],
     webhookEndpoints: ["list"],
     projects: ["list"],
     invitations: ["list"],

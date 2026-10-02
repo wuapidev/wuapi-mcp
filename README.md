@@ -125,19 +125,19 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 
 ## Tools
 
-77 tools reach every operation of the REST API, except the two that return a secret and the two steps of an upload through an upload URL (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
+80 tools reach every operation of the REST API, except the two that return a secret and the two steps of an upload through an upload URL (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
 
 | Area | Tools |
 |---|---|
 | Context | `get_current_key` |
 | Accounts | `list_accounts`, `get_account`, `get_account_qr_code`, `create_account`, `request_pairing_code`, `reconnect_account`, `list_proxy_locations`, `update_account`, `unlink_account`, `set_presence`, `set_disappearing_timer`, `reject_call` |
-| Messages | `send_text`, `send_media`, `upload_file`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message`, `vote_in_poll`, `star_message` |
+| Messages | `send_text`, `send_media`, `upload_file`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message`, `vote_in_poll`, `forward_message`, `star_message` |
 | Chats | `list_chats`, `get_chat`, `mark_chat_read`, `send_read_receipts`, `archive_chat`, `pin_chat`, `mute_chat`, `delete_chat`, `manage_labels` |
 | Contacts | `list_contacts`, `get_contact`, `check_numbers`, `lookup_contacts`, `lookup_whatsapp_info`, `manage_block_list` |
-| Profile | `manage_profile`, `manage_privacy` |
+| Profile | `manage_profile`, `manage_favorite_stickers`, `manage_privacy` |
 | Groups | `list_groups`, `get_group`, `create_group`, `add_group_participants`, `remove_group_participants`, `promote_group_participants`, `demote_group_participants`, `get_group_invite_link`, `reset_group_invite_link`, `leave_group`, `manage_group_settings`, `manage_group_joins`, `manage_community` |
 | Channels | `manage_channel` |
-| Stories | `post_story` |
+| Stories | `post_story`, `manage_stories` |
 | Webhooks | `list_webhooks`, `get_webhook`, `create_webhook`, `update_webhook`, `delete_webhook` |
 | Projects | `list_projects`, `get_project`, `create_project`, `manage_project` |
 | Invitations | `create_invitation`, `list_invitations`, `get_invitation`, `cancel_invitation`, `resend_invitation`, `manage_branding` |
@@ -153,11 +153,13 @@ Resources with many small operations are one tool with an `action` argument, so 
 | `lookup_whatsapp_info` | `contact_picture`, `business_profile`, `resolve_link`, `bots`, `sticker_pack`, `order` |
 | `manage_block_list` | `list`, `block`\*, `unblock` |
 | `manage_profile` | `update`, `set_picture`, `delete_picture`\*, `get_contact_link`, `reset_contact_link`\* |
+| `manage_favorite_stickers` | `list`, `get_file`, `add`, `remove` |
 | `manage_privacy` | `get`, `get_story_privacy`, `update` |
 | `manage_group_settings` | `update`, `set_picture`, `delete_picture`\* |
 | `manage_group_joins` | `preview_invite`, `join`, `list_requests`, `approve_requests`, `reject_requests` |
 | `manage_community` | `create`, `list_groups`, `list_members`, `link_group`, `unlink_group` |
 | `manage_channel` | `list`, `get`, `preview_invite`, `list_messages`, `create`, `follow`, `unfollow`, `mute`, `unmute`, `react`, `mark_viewed` |
+| `manage_stories` | `list`, `list_own`, `get`, `viewers`, `view`, `react`, `reply`, `delete`\* |
 | `manage_project` | `update`, `delete`\*, `list_keys`, `revoke_key`\* |
 | `manage_branding` | `get`, `update` |
 

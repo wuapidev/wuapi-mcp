@@ -171,6 +171,17 @@ describe("messages and chats", () => {
     expect(client.messages.vote).toHaveBeenLastCalledWith("m", [], undefined);
   });
 
+  it("forward_message forwards to the chats named, with the idempotency key", async () => {
+    client.messages.forward!.mockResolvedValue({ object: "list", items: [message({ forwarded: true }), message({ forwarded: true })], nextCursor: null });
+    const res = out(await call("forward_message", { messageId: "m", to: ["+584241112233", "120363041234567890@g.us"], idempotencyKey: "k" }));
+    expect(client.messages.forward).toHaveBeenCalledWith("m", { to: ["+584241112233", "120363041234567890@g.us"] }, { idempotencyKey: "k" });
+    expect(res.items as unknown[]).toHaveLength(2);
+    // WhatsApp's limit per forward, and at least one chat.
+    expect(accepts("forward_message", { messageId: "m", to: [] })).toBe(false);
+    expect(accepts("forward_message", { messageId: "m", to: ["1", "2", "3", "4", "5", "6"] })).toBe(false);
+    expect(accepts("forward_message", { messageId: "m", to: ["+584241112233"] })).toBe(true);
+  });
+
   it("star_message stars by default and unstars with starred: false", async () => {
     client.messages.star!.mockResolvedValue(message({ starred: true }));
     client.messages.unstar!.mockResolvedValue(message({ starred: false }));
@@ -232,6 +243,31 @@ describe("contacts, profile and privacy", () => {
     expect(out(res)).toEqual({ accountId: "a", contactId: "+1555", blocked: true });
     await call("manage_block_list", { action: "unblock", accountId: "a", contactId: "+1555" });
     expect(client.contacts.unblock).toHaveBeenCalledWith("a", "+1555");
+  });
+
+  it("manage_favorite_stickers lists, gets a file, adds from a message or an upload, and removes", async () => {
+    await call("manage_favorite_stickers", { action: "list", accountId: "a", limit: 5 });
+    expect(client.favoriteStickers.list).toHaveBeenCalledWith("a", { limit: 5 });
+
+    client.favoriteStickers.getMedia!.mockResolvedValue({ object: "media", stickerId: "s1", url: "https://files.example/s1", mimeType: "image/webp", size: 10 });
+    const file = await call("manage_favorite_stickers", { action: "get_file", accountId: "a", stickerId: "s1" });
+    expect(client.favoriteStickers.getMedia).toHaveBeenCalledWith("a", "s1", { redirect: false });
+    expect(out(file)).toMatchObject({ url: "https://files.example/s1" });
+
+    await call("manage_favorite_stickers", { action: "add", accountId: "a", messageId: "m1" });
+    expect(client.favoriteStickers.add).toHaveBeenLastCalledWith("a", { messageId: "m1" }, undefined);
+    await call("manage_favorite_stickers", { action: "add", accountId: "a", uploadId: "u1", idempotencyKey: "k1" });
+    expect(client.favoriteStickers.add).toHaveBeenLastCalledWith("a", { uploadId: "u1" }, { idempotencyKey: "k1" });
+    expect((await call("manage_favorite_stickers", { action: "add", accountId: "a" })).isError).toBe(true);
+    expect((await call("manage_favorite_stickers", { action: "add", accountId: "a", messageId: "m1", uploadId: "u1" })).isError).toBe(true);
+    expect(client.favoriteStickers.add).toHaveBeenCalledTimes(2);
+
+    // Removing is not destructive: the sticker can be favorited again.
+    const removed = await call("manage_favorite_stickers", { action: "remove", accountId: "a", stickerId: "s1" });
+    expect(client.favoriteStickers.remove).toHaveBeenCalledWith("a", "s1");
+    expect(out(removed)).toEqual({ accountId: "a", stickerId: "s1", removed: true });
+    expect((await call("manage_favorite_stickers", { action: "remove", accountId: "a" })).isError).toBe(true);
+    expect(client.favoriteStickers.remove).toHaveBeenCalledTimes(1);
   });
 
   it("manage_profile updates the name and about, pictures and the contact link", async () => {

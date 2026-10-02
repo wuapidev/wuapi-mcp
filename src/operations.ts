@@ -54,6 +54,14 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
 
   // stories
   createStory: ["post_story"],
+  listStories: ["manage_stories.list"],
+  listOwnStories: ["manage_stories.list_own"],
+  getStory: ["manage_stories.get", "manage_stories.reply"],
+  getStoryMedia: ["manage_stories.get"],
+  listStoryViewers: ["manage_stories.viewers"],
+  viewStory: ["manage_stories.view"],
+  reactToStory: ["manage_stories.react"],
+  deleteStory: ["manage_stories.delete"],
 
   // contacts
   listContacts: ["list_contacts"],
@@ -73,6 +81,12 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   getStickerPack: ["lookup_whatsapp_info.sticker_pack"],
   getOrder: ["lookup_whatsapp_info.order"],
 
+  // favorite stickers
+  listFavoriteStickers: ["manage_favorite_stickers.list"],
+  addFavoriteSticker: ["manage_favorite_stickers.add"],
+  removeFavoriteSticker: ["manage_favorite_stickers.remove"],
+  getFavoriteStickerMedia: ["manage_favorite_stickers.get_file"],
+
   // profile and privacy
   updateProfile: ["manage_profile.update"],
   setProfilePicture: ["manage_profile.set_picture"],
@@ -82,7 +96,7 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   getStoryPrivacy: ["manage_privacy.get_story_privacy"],
 
   // messages
-  sendMessage: ["send_text", "send_media", "send_location", "send_contact", "send_poll", "reply_to_message"],
+  sendMessage: ["send_text", "send_media", "send_location", "send_contact", "send_poll", "reply_to_message", "manage_stories.reply"],
   listMessages: ["list_messages"],
   getMessage: ["get_message", "reply_to_message", "cancel_message"],
   getMessageMedia: ["get_message"],
@@ -90,6 +104,7 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   deleteMessage: ["delete_message", "cancel_message"],
   reactToMessage: ["react_to_message"],
   voteInPoll: ["vote_in_poll"],
+  forwardMessage: ["forward_message"],
   starMessage: ["star_message"],
   unstarMessage: ["star_message"],
 

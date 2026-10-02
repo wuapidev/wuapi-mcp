@@ -227,6 +227,14 @@ function pictureInput(a: { pictureUrl?: string | undefined; pictureBase64?: stri
   throw new ToolInputError("Pass the picture as `pictureUrl` or `pictureBase64`.");
 }
 
+/** Exactly one of a sticker message or an uploaded sticker file. */
+function favoriteSource(a: { messageId?: string | undefined; uploadId?: string | undefined }): { messageId: string } | { uploadId: string } {
+  if (a.messageId && a.uploadId) throw new ToolInputError("Pass `messageId` or `uploadId`, not both.");
+  if (a.messageId) return { messageId: a.messageId };
+  if (a.uploadId) return { uploadId: a.uploadId };
+  throw new ToolInputError("Pass the sticker as `messageId` or `uploadId`.");
+}
+
 /** The defined values, or a ToolInputError when there is none. */
 function changes<T extends Record<string, unknown>>(value: T, fields: string): T {
   const out = defined(value);
@@ -849,6 +857,24 @@ export const TOOLS: ToolDefinition[] = [
     run: async (client, a) => ok(await client.messages.vote(a.messageId, a.options, opts(a.idempotencyKey))),
   }),
   tool({
+    name: "forward_message",
+    title: "Forward a message",
+    group: "messages",
+    description:
+      "Forward a stored message (received or sent) to up to 5 chats of the same account, the way WhatsApp forwards: the recipients see it as forwarded and no file is uploaded again. Works for text, images, videos, audio, voice notes, documents, stickers, locations and contact cards; polls, calendar events, reactions, view-once and deleted messages answer `not_forwardable`, and so does a contact's story (only a story the account posted, which is a message, can be forwarded). A message that is `forwardedManyTimes` goes to one chat per call. Returns a list with one queued message per chat, in the order of `to`; check each with get_message. To label new content as forwarded, use a send tool with `forwarded: true` instead.",
+    inputSchema: z.object({
+      messageId,
+      to: z
+        .array(z.string().min(1).max(64))
+        .min(1)
+        .max(5)
+        .describe("The chats to forward to, each once: contact ids (E.164 or `lid:<digits>`) or group ids. At most 5; exactly 1 when the message is `forwardedManyTimes`."),
+      idempotencyKey,
+    }),
+    annotations: ACT,
+    run: async (client, a) => ok(await client.messages.forward(a.messageId, { to: a.to }, opts(a.idempotencyKey))),
+  }),
+  tool({
     name: "star_message",
     title: "Star or unstar a message",
     group: "messages",
@@ -1254,6 +1280,54 @@ export const TOOLS: ToolDefinition[] = [
         annotations: { ...DESTROY, idempotentHint: false },
         required: ["accountId", "confirm"],
         run: async (client, a) => ok(await client.contacts.resetLink(a.accountId)),
+      }),
+    }),
+  }),
+  actionTool({
+    name: "manage_favorite_stickers",
+    title: "Manage favorite stickers",
+    group: "profile",
+    description:
+      "The account's favorite stickers: the star tab of WhatsApp's sticker picker, which WhatsApp keeps in sync with the phone. List them, get one's file, favorite a sticker from a message or an uploaded WebP file, or remove one. Adding and removing change the list on the phone too.",
+    fields: {
+      accountId,
+      stickerId: id("A favorite sticker's id, from the `list` action."),
+      messageId: id("A sticker message of this account to favorite (from list_messages or a webhook)."),
+      uploadId: id("A WebP file uploaded with upload_file (`mimeType: image/webp`, at most 2 MB) to favorite."),
+      limit,
+      cursor,
+      idempotencyKey,
+    },
+    actions: (act) => ({
+      list: act({
+        summary:
+          "The favorites, newest first, from what wuapi stored (no call to WhatsApp). Each has `media.url` and `media.downloaded`; `animated` and `emojis` are null until its file was fetched.",
+        annotations: READ,
+        required: ["accountId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.favoriteStickers.list(a.accountId, listArgs(a)).page()),
+      }),
+      get_file: act({
+        summary: "A direct URL to one favorite's file that needs no API key. Fetches the file from WhatsApp the first time, which needs the account ready.",
+        annotations: READ_LIVE,
+        required: ["accountId", "stickerId"],
+        run: async (client, a) => ok(await client.favoriteStickers.getMedia(a.accountId, a.stickerId, { redirect: false })),
+      }),
+      add: act({
+        summary: "Favorite a sticker: pass `messageId` or `uploadId`, one of them. A sticker that is a favorite already is returned as is.",
+        annotations: SET,
+        required: ["accountId"],
+        optional: ["messageId", "uploadId", "idempotencyKey"],
+        run: async (client, a) => ok(await client.favoriteStickers.add(a.accountId, favoriteSource(a), opts(a.idempotencyKey))),
+      }),
+      remove: act({
+        summary: "Take a sticker out of the favorites. It can be favorited again.",
+        annotations: SET,
+        required: ["accountId", "stickerId"],
+        run: async (client, a) => {
+          await client.favoriteStickers.remove(a.accountId, a.stickerId);
+          return ok({ accountId: a.accountId, stickerId: a.stickerId, removed: true });
+        },
       }),
     }),
   }),
@@ -1676,6 +1750,98 @@ export const TOOLS: ToolDefinition[] = [
       const media = a.uploadId !== undefined ? { uploadId: a.uploadId } : { url: a.mediaUrl as string };
       return ok({ message: await client.stories.create(a.accountId, defined({ type, media, text: a.text }), opts(a.idempotencyKey)) });
     },
+  }),
+  actionTool({
+    name: "manage_stories",
+    title: "Read and answer stories",
+    group: "stories",
+    description:
+      "Stories (WhatsApp Status): read the ones the account's contacts posted in the last 24 hours, mark one as viewed, react or reply to it, and see or delete the ones the account posted (post with post_story). Reading stories tells the contact nothing; `view` does, so call it only when the user wants the contact to know. Contacts' stories arrive only for accounts with stories turned on.",
+    fields: {
+      accountId,
+      storyId: id("A story id, from `list`, `list_own` or a webhook. A story the account posted has the id of its message."),
+      contactId: id("A contact id (E.164 with + or `lid:<digits>`): only this contact's stories."),
+      unviewed: z.boolean().describe("`true`: only the contacts with a story the account has not seen."),
+      fetchMedia: z.boolean().describe("Also download the story's file if needed and return its direct URL as `mediaFile`. Does not mark the story as viewed."),
+      emoji: z.string().max(32).describe("One emoji, such as a green heart. An empty string removes the reaction."),
+      text: z.string().min(1).max(4096).describe("The reply."),
+      limit,
+      cursor,
+      idempotencyKey,
+      confirm: confirm("The story is deleted for every contact and cannot be restored."),
+    },
+    actions: (act) => ({
+      list: act({
+        summary: "Contacts' stories, grouped by contact, the contact with the newest story first.",
+        annotations: READ,
+        required: ["accountId"],
+        optional: ["contactId", "unviewed", "limit", "cursor"],
+        run: async (client, a) =>
+          page(await client.stories.list(a.accountId, defined({ contactId: a.contactId, unviewed: a.unviewed, ...listArgs(a) })).page()),
+      }),
+      list_own: act({
+        summary: "The stories the account posted in the last 24 hours, with how many contacts saw each.",
+        annotations: READ,
+        required: ["accountId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.stories.listOwn(a.accountId, listArgs(a)).page()),
+      }),
+      get: act({
+        summary: "One story. With `fetchMedia`, also its file's direct URL.",
+        annotations: READ,
+        required: ["accountId", "storyId"],
+        optional: ["fetchMedia"],
+        run: async (client, a) => {
+          const story = await client.stories.get(a.accountId, a.storyId);
+          if (!a.fetchMedia || !story.media) return ok(story);
+          return ok({ ...story, mediaFile: await client.stories.getMedia(a.accountId, a.storyId, { redirect: false }) });
+        },
+      }),
+      viewers: act({
+        summary: "Who saw a story the account posted, with their reactions, the latest viewer first.",
+        annotations: READ,
+        required: ["accountId", "storyId"],
+        optional: ["limit", "cursor"],
+        run: async (client, a) => page(await client.stories.listViewers(a.accountId, a.storyId, listArgs(a)).page()),
+      }),
+      view: act({
+        summary:
+          "Tell the contact the account saw their story: the account then shows in the story's viewers. Only when the user asked for it. `authorNotified: false` in the answer means WhatsApp did not tell them (read receipts are off).",
+        annotations: SET,
+        required: ["accountId", "storyId"],
+        optional: ["idempotencyKey"],
+        run: async (client, a) => ok(await client.stories.view(a.accountId, a.storyId, opts(a.idempotencyKey))),
+      }),
+      react: act({
+        summary: "React to a contact's story with an emoji, or remove the reaction with an empty string. Only the story's author sees it.",
+        annotations: SET,
+        required: ["accountId", "storyId", "emoji"],
+        run: async (client, a) => {
+          await client.stories.react(a.accountId, a.storyId, { emoji: a.emoji });
+          return ok({ storyId: a.storyId, emoji: a.emoji, reacted: a.emoji !== "" });
+        },
+      }),
+      reply: act({
+        summary: "Reply to a contact's story with text: a message in the chat with its author, who sees it as a reply to their story.",
+        annotations: ACT,
+        required: ["accountId", "storyId", "text"],
+        optional: ["idempotencyKey"],
+        run: async (client, a) => {
+          const story = await client.stories.get(a.accountId, a.storyId);
+          if (story.own || !story.contactId) throw new ToolInputError("Replies go to a contact's story, not to one the account posted.");
+          return send(client, { accountId: a.accountId, to: story.contactId, type: "text", text: a.text, replyToStoryId: story.id }, a.idempotencyKey);
+        },
+      }),
+      delete: act({
+        summary: "Delete a story the account posted, for everyone.",
+        annotations: DESTROY,
+        required: ["accountId", "storyId", "confirm"],
+        run: async (client, a) => {
+          await client.stories.delete(a.accountId, a.storyId);
+          return ok({ storyId: a.storyId, deleted: true });
+        },
+      }),
+    }),
   }),
 
   // ---- webhooks ------------------------------------------------------------
