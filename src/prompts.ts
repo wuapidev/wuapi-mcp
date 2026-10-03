@@ -100,7 +100,11 @@ export const PROMPTS: PromptDefinition[] = [
         "- Streams: there is no public endpoint (local development, a desktop app, a worker behind NAT, an agent). The code opens one request to https://stream.wuapi.dev/v1/events/stream and wuapi sends each event as it happens.",
         "- REST: history, and catching up after a reset. Never poll for events: it spends the key's 600 requests a minute and arrives later than either channel.",
         "",
-        `How a Streams client works. Write it in ${a.language?.trim() || "the language of this project"}:`,
+        "With an SDK the Streams client is one call. It reconnects with the last id, waits the retry time, deduplicates and reports a reset by itself, so use it when the code is in one of these languages:",
+        "- TypeScript, `@wuapidev/sdk` 0.13 or later: `for await (const event of wuapi.events.stream({ types: [\"message.received\"] })) { ... }`. The event is typed by `types`, `onStatus` tells about `reset` and `reconnecting`, and only a `StreamError` (a refused key, a wrong filter) ends the loop.",
+        "- Rust, the `wuapi` crate 0.13 or later: `let mut stream = client.events().stream(EventsStreamParams::new())?;` then `while let Some(event) = stream.next_event().await { ... }`.",
+        "",
+        `In any other language, write the client to these rules. Write it in ${a.language?.trim() || "the language of this project"}:`,
         a.project?.trim()
           ? `1. Send the key in the header: \`Authorization: Bearer $WUAPI_API_KEY\`, plus \`Wuapi-Project: ${a.project.trim()}\` to scope it. A key in the URL is refused with 401.`
           : "1. Send the key in the header: `Authorization: Bearer $WUAPI_API_KEY`. A key in the URL is refused with 401.",

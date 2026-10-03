@@ -118,6 +118,11 @@ describe("MCP server over an in-memory transport", () => {
     expect(text).toContain("Webhooks");
     expect(text).toContain("public https endpoint");
     expect(text).toContain("setup_webhook");
+    // the SDK helper first, in the two languages that have it
+    expect(text).toContain("wuapi.events.stream(");
+    expect(text).toContain("client.events().stream(");
+    expect(text).toContain("@wuapidev/sdk");
+    expect(text.indexOf("wuapi.events.stream(")).toBeLessThan(text.indexOf("Read the response as text/event-stream"));
     // the wire contract
     expect(text).toContain("https://stream.wuapi.dev/v1/events/stream");
     expect(text).toContain("Authorization");
