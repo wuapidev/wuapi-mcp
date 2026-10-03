@@ -101,8 +101,45 @@ describe("MCP server over an in-memory transport", () => {
     expect(fetchImpl).toHaveBeenCalledWith("https://example.test/openapi.json", expect.anything());
 
     const { prompts } = await mcp.listPrompts();
-    expect(prompts.map((p) => p.name).sort()).toEqual(["invite_customer", "send_message", "setup_webhook"]);
+    expect(prompts.map((p) => p.name).sort()).toEqual(["invite_customer", "send_message", "setup_webhook", "use_streams"]);
     const p = await mcp.getPrompt({ name: "send_message", arguments: { to: "+584241112233", message: "Hello" } });
     expect((p.messages[0]!.content as { text: string }).text).toContain("send_text");
+  });
+
+  it("serves the Streams prompt: when to choose it over Webhooks, and the rules a stream client must follow", async () => {
+    const { mcp } = await connect();
+    const { prompts } = await mcp.listPrompts();
+    const streams = prompts.find((p) => p.name === "use_streams")!;
+    expect(streams.title).toBe("Use Streams");
+
+    const plain = await mcp.getPrompt({ name: "use_streams", arguments: {} });
+    const text = (plain.messages[0]!.content as { text: string }).text;
+    // the choice: Webhooks for a server with a public https endpoint, Streams otherwise, REST for history
+    expect(text).toContain("Webhooks");
+    expect(text).toContain("public https endpoint");
+    expect(text).toContain("setup_webhook");
+    // the wire contract
+    expect(text).toContain("https://stream.wuapi.dev/v1/events/stream");
+    expect(text).toContain("Authorization");
+    expect(text).toContain("Last-Event-ID");
+    expect(text).toContain("`reset`");
+    expect(text).toContain("evt_");
+    // a browser's EventSource cannot send the header
+    expect(text).toContain("EventSource");
+    expect(text).toContain("your backend");
+    // never poll for events
+    expect(text).toMatch(/never poll/i);
+    // the way to watch it work
+    expect(text).toContain("npx @wuapidev/cli events stream");
+  });
+
+  it("puts the project and the language of the code into the Streams prompt when given", async () => {
+    const { mcp } = await connect();
+    const withArgs = await mcp.getPrompt({ name: "use_streams", arguments: { project: "proj_northwind", language: "Python" } });
+    const text = (withArgs.messages[0]!.content as { text: string }).text;
+    expect(text).toContain("Python");
+    expect(text).toContain("Wuapi-Project: proj_northwind");
+    const without = await mcp.getPrompt({ name: "use_streams", arguments: {} });
+    expect((without.messages[0]!.content as { text: string }).text).not.toContain("Wuapi-Project: proj_");
   });
 });

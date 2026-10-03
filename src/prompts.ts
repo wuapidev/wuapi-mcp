@@ -83,4 +83,36 @@ export const PROMPTS: PromptDefinition[] = [
         "3. Give me the invitation url to send them, and when it expires. Then I can check progress with get_invitation.",
       ].join("\n"),
   }),
+  prompt({
+    name: "use_streams",
+    title: "Use Streams",
+    description: "Receive wuapi events live over Streams (no public endpoint needed), or choose Webhooks when the server has one.",
+    argsSchema: z.object({
+      project: z.string().optional().describe("Scope an organization key to this project (id or ext:<externalId>)."),
+      language: z.string().optional().describe("The language of the client to write. Default: the project's."),
+    }),
+    text: (a) =>
+      [
+        "Help me receive wuapi events in my code: with Streams, or with Webhooks when that fits better.",
+        "",
+        "Choose first, and ask me only if I did not say which fits:",
+        "- Webhooks: my server has a public https endpoint. wuapi POSTs each event, signed, and retries. Use the setup_webhook prompt.",
+        "- Streams: there is no public endpoint (local development, a desktop app, a worker behind NAT, an agent). The code opens one request to https://stream.wuapi.dev/v1/events/stream and wuapi sends each event as it happens.",
+        "- REST: history, and catching up after a reset. Never poll for events: it spends the key's 600 requests a minute and arrives later than either channel.",
+        "",
+        `How a Streams client works. Write it in ${a.language?.trim() || "the language of this project"}:`,
+        a.project?.trim()
+          ? `1. Send the key in the header: \`Authorization: Bearer $WUAPI_API_KEY\`, plus \`Wuapi-Project: ${a.project.trim()}\` to scope it. A key in the URL is refused with 401.`
+          : "1. Send the key in the header: `Authorization: Bearer $WUAPI_API_KEY`. A key in the URL is refused with 401.",
+        "2. Read the response as text/event-stream. Each event is a frame with `id` (an opaque cursor), `event` (the type) and `data` (the same envelope a webhook carries, one JSON line). A line starting with a colon is a heartbeat, sent every 15 seconds.",
+        "3. Keep the `id` of the last frame. After a disconnect, wait the `retry` time the stream sent and reconnect with `Last-Event-ID` set to it. Within 30 minutes wuapi replays what was missed. A replay can repeat an event, so deduplicate on the event id (evt_...).",
+        "4. A frame named `reset` means the cursor is too old or unknown: resync through REST (list_messages, list_chats), then carry on with the live stream. A connection with no `Last-Event-ID` starts from now, with no history.",
+        "5. Filter with the `types` and `accounts` query parameters, up to 50 values each. Presence events are not sent on Streams.",
+        "6. The Free plan allows 3 open stream connections per organization. A fourth gets 429 `stream_connection_limit`: wait for `Retry-After`.",
+        "",
+        "A browser's EventSource cannot set the Authorization header, so a web app goes through your backend, which opens the stream and passes the events on. The key never goes into front-end code.",
+        "",
+        "To watch it work, run `npx @wuapidev/cli events stream` (one JSON event per line), then send a message to a linked number with send_text.",
+      ].join("\n"),
+  }),
 ];

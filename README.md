@@ -177,7 +177,7 @@ Not exposed: creating a project API key and rotating a webhook endpoint's signin
 
 Resources: `https://wuapi.dev/openapi.json` (the OpenAPI 3.1 spec), `https://wuapi.dev/llms-full.txt` (the docs as Markdown), `https://wuapi.dev/llms.txt` (their index) and `wuapi://webhook-events` (every event type).
 
-Prompts: `send_message` (to, message), `setup_webhook` (url, events) and `invite_customer` (customer, externalId, email).
+Prompts: `send_message` (to, message), `setup_webhook` (url, events), `invite_customer` (customer, externalId, email) and `use_streams` (project, language). `use_streams` helps you receive events with Streams, the live alternative to Webhooks for code with no public endpoint.
 
 ## Security
 
