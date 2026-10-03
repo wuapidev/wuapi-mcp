@@ -109,7 +109,7 @@ export const PROMPTS: PromptDefinition[] = [
           ? `1. Send the key in the header: \`Authorization: Bearer $WUAPI_API_KEY\`, plus \`Wuapi-Project: ${a.project.trim()}\` to scope it. A key in the URL is refused with 401.`
           : "1. Send the key in the header: `Authorization: Bearer $WUAPI_API_KEY`. A key in the URL is refused with 401.",
         "2. Read the response as text/event-stream. Each event is a frame with `id` (an opaque cursor), `event` (the type) and `data` (the same envelope a webhook carries, one JSON line). A line starting with a colon is a heartbeat, sent every 15 seconds.",
-        "3. Keep the `id` of the last frame. After a disconnect, wait the `retry` time the stream sent and reconnect with `Last-Event-ID` set to it. Within 30 minutes wuapi replays what was missed. A replay can repeat an event, so deduplicate on the event id (evt_...).",
+        "3. Keep the `id` of the last frame. After a disconnect, wait the `retry` time the stream sent and reconnect with `Last-Event-ID` set to it. Within 28 minutes wuapi replays what was missed (events are kept 30 minutes, but only 28 are guaranteed). A replay can repeat an event, so deduplicate on the event id (evt_...).",
         "4. A frame named `reset` means the cursor is too old or unknown: resync through REST (list_messages, list_chats), then carry on with the live stream. A connection with no `Last-Event-ID` starts from now, with no history.",
         "5. Filter with the `types` and `accounts` query parameters, up to 50 values each. Presence events are not sent on Streams.",
         "6. The Free plan allows 3 open stream connections per organization. A fourth gets 429 `stream_connection_limit`: wait for `Retry-After`.",

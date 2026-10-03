@@ -128,6 +128,9 @@ describe("MCP server over an in-memory transport", () => {
     expect(text).toContain("Authorization");
     expect(text).toContain("Last-Event-ID");
     expect(text).toContain("`reset`");
+    // events are kept 30 minutes, but a client can only count on resuming within 28
+    expect(text).toContain("Within 28 minutes");
+    expect(text).not.toMatch(/within 30 minutes/i);
     expect(text).toContain("evt_");
     // a browser's EventSource cannot send the header
     expect(text).toContain("EventSource");
