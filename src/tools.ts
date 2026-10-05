@@ -1378,7 +1378,8 @@ export const TOOLS: ToolDefinition[] = [
     name: "list_groups",
     title: "List groups",
     group: "groups",
-    description: "Every group the account is in, read live from WhatsApp, with the participant count. Use get_group for the participants.",
+    description:
+      "Every group the account is in, read live from WhatsApp, with the participant count. A group inside a community has that community's id as `communityId` (absent when it is in none), and `default: true` when it is the community's announcement group. Use get_group for the participants.",
     inputSchema: z.object({ accountId, limit, cursor }),
     annotations: READ_LIVE,
     run: async (client, a) => page(await client.groups.list(a.accountId, listArgs(a)).page(), (g) => slimGroup(g)),
@@ -1396,15 +1397,24 @@ export const TOOLS: ToolDefinition[] = [
     name: "create_group",
     title: "Create a group",
     group: "groups",
-    description: "Create a WhatsApp group with the account as owner. Participants whose privacy settings refuse being added get an invite code instead (see the result).",
+    description:
+      "Create a WhatsApp group with the account as owner, inside a community when `communityId` is given. Participants whose privacy settings refuse being added get an invite code instead (see the result).",
     inputSchema: z.object({
       accountId,
       name: z.string().trim().min(1).max(100).describe("The group name."),
       participants: contactIds.describe("Contact ids to add: E.164 with + or `lid:<digits>`."),
+      communityId: communityId.optional().describe("Create the group inside this community: its group id (`...@g.us`), from list_groups (`community: true`). The account must administer it."),
       idempotencyKey,
     }),
     annotations: ACT,
-    run: async (client, a) => ok(await client.groups.create(a.accountId, { name: a.name, participants: a.participants }, opts(a.idempotencyKey))),
+    run: async (client, a) =>
+      ok(
+        await client.groups.create(
+          a.accountId,
+          { name: a.name, participants: a.participants, ...(a.communityId !== undefined ? { communityId: a.communityId } : {}) },
+          opts(a.idempotencyKey),
+        ),
+      ),
   }),
   tool({
     name: "add_group_participants",
@@ -1577,7 +1587,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "Manage communities",
     group: "groups",
     description:
-      "WhatsApp communities: a community is a group with `community: true` that links other groups. Create one, list its groups and members, and link or unlink groups (the account must admin both). get_group reads the community itself; send to it like a group.",
+      "WhatsApp communities: a community is a group with `community: true` that links other groups. Create one, list its groups and members, and link or unlink groups (the account must admin both). get_group reads the community itself; send to it like a group. To create a new group inside a community, use create_group with `communityId`; list_groups shows each group's `communityId`.",
     fields: {
       accountId,
       communityId,

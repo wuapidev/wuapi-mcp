@@ -442,6 +442,31 @@ describe("chats, contacts and groups", () => {
     expect(client.groups.removeParticipants).toHaveBeenCalledWith("a", "g@g.us", ["+1555"]);
   });
 
+  it("create_group creates a group, inside a community when communityId is given", async () => {
+    client.groups.create!.mockResolvedValue({ object: "group", id: "g@g.us", name: "Team", communityId: null, participants: [] });
+    await call("create_group", { accountId: "a", name: "Team", participants: ["+1555"] });
+    expect(client.groups.create).toHaveBeenLastCalledWith("a", { name: "Team", participants: ["+1555"] }, undefined);
+    client.groups.create!.mockResolvedValue({ object: "group", id: "g@g.us", name: "Volunteers", communityId: "c@g.us", participants: [] });
+    const res = await call("create_group", { accountId: "a", name: "Volunteers", participants: ["+1555"], communityId: "c@g.us", idempotencyKey: "k" });
+    expect(client.groups.create).toHaveBeenLastCalledWith("a", { name: "Volunteers", participants: ["+1555"], communityId: "c@g.us" }, { idempotencyKey: "k" });
+    expect(res.structuredContent).toMatchObject({ id: "g@g.us", communityId: "c@g.us" });
+  });
+
+  it("list_groups says which community each group belongs to", async () => {
+    listPage(client.groups.list!, [
+      { object: "group", id: "c@g.us", name: "Town", community: true, communityId: null, default: false, participants: [] },
+      { object: "group", id: "g@g.us", name: "Announcements", community: false, communityId: "c@g.us", default: true, participants: [] },
+    ]);
+    const res = await call("list_groups", { accountId: "a" });
+    expect((res.structuredContent as { items: unknown[] }).items).toEqual([
+      // (a null is left out of a result: no `communityId` means the group is in no community)
+      { id: "c@g.us", name: "Town", community: true, default: false, participantCount: 0 },
+      { id: "g@g.us", name: "Announcements", community: false, communityId: "c@g.us", default: true, participantCount: 0 },
+    ]);
+    const described = TOOLS.find((t) => t.name === "list_groups")?.description ?? "";
+    expect(described).toContain("communityId");
+  });
+
   it("list_groups returns counts, not every participant", async () => {
     listPage(client.groups.list!, [{ object: "group", id: "g@g.us", name: "Team", participants: [{ contactId: "+1", role: "admin" }, { contactId: "+2", role: "member" }] }]);
     const res = await call("list_groups", { accountId: "a" });
