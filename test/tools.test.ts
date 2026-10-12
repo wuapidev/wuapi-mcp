@@ -51,7 +51,7 @@ describe("catalog", () => {
     const destructive = TOOLS.filter((t) => t.annotations.destructiveHint && !t.actions);
     expect(destructive.map((t) => t.name).sort()).toEqual(
       [
-        "cancel_invitation", "cancel_message", "delete_chat", "delete_message", "delete_webhook", "leave_group",
+        "cancel_invitation", "cancel_message", "delete_chat", "delete_incoming_webhook", "delete_message", "delete_webhook", "leave_group",
         "remove_group_participants", "resend_invitation", "reset_group_invite_link",
       ].sort(),
     );
@@ -110,6 +110,7 @@ describe("catalog", () => {
       "list_contacts", "get_contact", "check_numbers", "lookup_contacts",
       "create_group", "get_group", "add_group_participants", "remove_group_participants", "promote_group_participants", "demote_group_participants", "get_group_invite_link", "leave_group",
       "post_story", "list_webhooks", "create_webhook", "update_webhook", "delete_webhook",
+      "list_incoming_webhooks", "create_incoming_webhook", "update_incoming_webhook", "delete_incoming_webhook",
       "create_project", "create_invitation", "get_usage",
     ]) {
       expect(names.has(n), n).toBe(true);
@@ -490,6 +491,33 @@ describe("webhooks, projects, invitations, usage", () => {
     const res = await call("create_webhook", { url: "https://example.com/hook", events: ["message.received"] });
     expect(JSON.stringify(res)).not.toContain("whsec_");
     expect(JSON.stringify(res)).toContain("we_1");
+  });
+
+  it("incoming webhook tools never return the URL, which is the credential", async () => {
+    const hook = {
+      object: "incoming_webhook",
+      id: "ih_1",
+      accountId: "acc_1",
+      projectId: null,
+      name: "Deploys",
+      to: "+584121234567",
+      enabled: true,
+      url: "https://api.wuapi.dev/hooks/aabbccddeeff00112233445566778899aabbccddeeff0011",
+      createdAt: "x",
+      updatedAt: "x",
+    };
+    client.incomingWebhooks.create!.mockResolvedValue(hook);
+    client.incomingWebhooks.get!.mockResolvedValue(hook);
+    client.incomingWebhooks.update!.mockResolvedValue(hook);
+    for (const res of [
+      await call("create_incoming_webhook", { accountId: "acc_1", name: "Deploys", to: "+584121234567" }),
+      await call("get_incoming_webhook", { incomingWebhookId: "ih_1" }),
+      await call("update_incoming_webhook", { incomingWebhookId: "ih_1", enabled: false }),
+    ]) {
+      expect(JSON.stringify(res)).not.toContain("/hooks/aabbcc");
+      expect(JSON.stringify(res)).toContain("ih_1");
+    }
+    expect(client.incomingWebhooks.update).toHaveBeenCalledWith("ih_1", { enabled: false });
   });
 
   it("create_webhook refuses plain http and unknown events", () => {

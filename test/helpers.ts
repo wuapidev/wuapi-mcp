@@ -21,6 +21,7 @@ type ResourceName =
   | "stories"
   | "uploads"
   | "webhookEndpoints"
+  | "incomingWebhooks"
   | "projects"
   | "invitations"
   | "branding"
@@ -63,6 +64,7 @@ export function mockClient(): MockClient {
     stories: ["create", "get", "getMedia", "view", "react", "delete"],
     uploads: ["create"],
     webhookEndpoints: ["create", "get", "update", "delete"],
+    incomingWebhooks: ["create", "get", "update", "delete"],
     projects: ["get", "create", "update", "delete", "getUsage"],
     invitations: ["create", "get", "cancel", "resend"],
     branding: ["get", "update"],
@@ -80,6 +82,7 @@ export function mockClient(): MockClient {
     channels: ["list", "listMessages"],
     stories: ["list", "listOwn", "listViewers"],
     webhookEndpoints: ["list"],
+    incomingWebhooks: ["list"],
     projects: ["list"],
     invitations: ["list"],
   };

@@ -125,7 +125,7 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 
 ## Tools
 
-80 tools reach every operation of the REST API, except the two that return a secret and the two steps of an upload through an upload URL (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
+85 tools reach every operation of the REST API, except the two that return a secret and the two steps of an upload through an upload URL (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
 
 | Area | Tools |
 |---|---|
@@ -139,6 +139,7 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 | Channels | `manage_channel` |
 | Stories | `post_story`, `manage_stories` |
 | Webhooks | `list_webhooks`, `get_webhook`, `create_webhook`, `update_webhook`, `delete_webhook` |
+| Incoming webhooks | `list_incoming_webhooks`, `get_incoming_webhook`, `create_incoming_webhook`, `update_incoming_webhook`, `delete_incoming_webhook` |
 | Projects | `list_projects`, `get_project`, `create_project`, `manage_project` |
 | Invitations | `create_invitation`, `list_invitations`, `get_invitation`, `cancel_invitation`, `resend_invitation`, `manage_branding` |
 | Usage | `get_usage`, `get_usage_by_project` |
@@ -169,7 +170,7 @@ To post to a channel, use `send_text` or `send_media` with `to` set to the chann
 
 `get_account_qr_code` returns the QR code as an image your client can show. Projects, invitations, branding and usage need an organization key.
 
-Not exposed: creating a project API key and rotating a webhook endpoint's signing secret. Both return a secret exactly once, and tool results never carry secrets, so a tool would create a key or secret nobody could read (and a rotation would break your server's signature check at once). Do both in the dashboard or with the SDK. Also not exposed: completing and reading an upload. They belong to the upload-URL flow, where the file's raw bytes are posted to a URL, which a tool cannot do; `upload_file` takes the bytes in its one call and returns the upload ready to send. Sending a test webhook event and reading request logs have no public API endpoint; they are in the dashboard.
+Not exposed: creating a project API key, rotating a webhook endpoint's signing secret and rotating an incoming webhook's URL. Both return a secret exactly once, and tool results never carry secrets, so a tool would create a key or secret nobody could read (and a rotation would break your server's signature check at once). Do both in the dashboard or with the SDK. Also not exposed: completing and reading an upload. They belong to the upload-URL flow, where the file's raw bytes are posted to a URL, which a tool cannot do; `upload_file` takes the bytes in its one call and returns the upload ready to send. Sending a test webhook event and reading request logs have no public API endpoint; they are in the dashboard.
 
 `src/operations.ts` maps every API operation to the tools that call it; a test keeps it equal to the OpenAPI spec.
 
@@ -182,7 +183,7 @@ Prompts: `send_message` (to, message), `setup_webhook` (url, events), `invite_cu
 ## Security
 
 - The key stays where you put it: in the client's configuration, a header, or the CLI's credentials file (mode 0600), which the server only reads. The server never logs it, never returns it, and never includes it in an error.
-- Tool results never contain secrets. A webhook endpoint's signing secret is returned by the API only once, when the endpoint is created; `create_webhook` drops it and tells you to reveal it in the dashboard instead. There is no tool that creates API keys.
+- Tool results never contain secrets. A webhook endpoint's signing secret is returned by the API only once, when the endpoint is created; `create_webhook` drops it and tells you to reveal it in the dashboard instead. An incoming webhook's URL is a credential too: its tools drop it, and the user copies it from the dashboard. There is no tool that creates API keys.
 - Scope the key: a project key reaches one project, and `WUAPI_MCP_READ_ONLY=true` removes every tool that writes.
 - Media is fetched by the wuapi API, never by this server. The API refuses private and internal addresses.
 - Every argument is validated against the tool's JSON schema before any request. A base URL that is not https is refused, so the key never travels in clear text.

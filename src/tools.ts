@@ -1925,6 +1925,75 @@ export const TOOLS: ToolDefinition[] = [
     run: async (client, a) => ok(await client.webhookEndpoints.get(a.webhookEndpointId)),
   }),
 
+  // ---- incoming webhooks ---------------------------------------------------
+  tool({
+    name: "list_incoming_webhooks",
+    title: "List incoming webhooks",
+    group: "webhooks",
+    description:
+      "The incoming webhooks: secret URLs that send a WhatsApp message from one of your numbers to one fixed contact or group. Shows the name, the number, the destination and whether each is enabled. Never the URLs themselves.",
+    inputSchema: z.object({ projectId: projectFilter, limit, cursor }),
+    annotations: READ,
+    run: async (client, a) => {
+      const res = await client.incomingWebhooks.list(defined({ projectId: a.projectId, ...listArgs(a) })).page();
+      return page({ ...res, items: res.items.map(withoutUrl) });
+    },
+  }),
+  tool({
+    name: "get_incoming_webhook",
+    title: "Get an incoming webhook",
+    group: "webhooks",
+    description: "One incoming webhook: its number, destination and whether it is enabled. Never its URL.",
+    inputSchema: z.object({ incomingWebhookId: id("The incoming webhook id, from list_incoming_webhooks.") }),
+    annotations: READ,
+    run: async (client, a) => ok(withoutUrl(await client.incomingWebhooks.get(a.incomingWebhookId))),
+  }),
+  tool({
+    name: "create_incoming_webhook",
+    title: "Create an incoming webhook",
+    group: "webhooks",
+    description:
+      "Create a secret URL that sends a WhatsApp message from one of the user's numbers to one fixed contact or group when something POSTs to it (JSON `{text}` or plain text, no API key). The URL is a credential, so it is not returned through this tool: the user copies it from the wuapi dashboard (Integrations, Incoming webhooks).",
+    inputSchema: z.object({
+      accountId,
+      name: z.string().trim().min(1).max(60).describe("A label, for example the system that will call it."),
+      to: z.string().trim().min(1).max(200).describe("The fixed destination: a contact (+584121234567 or lid:<digits>) or a group (...@g.us)."),
+    }),
+    annotations: CONFIGURE,
+    run: async (client, a) => ok({ incomingWebhook: withoutUrl(await client.incomingWebhooks.create({ accountId: a.accountId, name: a.name, to: a.to })), url: incomingUrlNote }),
+  }),
+  tool({
+    name: "update_incoming_webhook",
+    title: "Update an incoming webhook",
+    group: "webhooks",
+    description: "Rename an incoming webhook, or pause it (`enabled: false`) and resume it. The destination cannot change: create another one.",
+    inputSchema: z.object({
+      incomingWebhookId: id("The incoming webhook id, from list_incoming_webhooks."),
+      name: z.string().trim().min(1).max(60).optional(),
+      enabled: z.boolean().optional(),
+    }),
+    annotations: { ...CONFIGURE, idempotentHint: true },
+    run: async (client, a) => {
+      if (a.name === undefined && a.enabled === undefined) throw new ToolInputError("Pass at least one of name or enabled.");
+      return ok(withoutUrl(await client.incomingWebhooks.update(a.incomingWebhookId, defined({ name: a.name, enabled: a.enabled }))));
+    },
+  }),
+  tool({
+    name: "delete_incoming_webhook",
+    title: "Delete an incoming webhook",
+    group: "webhooks",
+    description: "Delete an incoming webhook. Its URL stops working at once, for whatever still calls it.",
+    inputSchema: z.object({
+      incomingWebhookId: id("The incoming webhook id, from list_incoming_webhooks."),
+      confirm: confirm("Whatever calls the URL stops sending."),
+    }),
+    annotations: DESTROY_CONFIG,
+    run: async (client, a) => {
+      await client.incomingWebhooks.delete(a.incomingWebhookId);
+      return ok({ incomingWebhookId: a.incomingWebhookId, deleted: true });
+    },
+  }),
+
   // ---- projects ------------------------------------------------------------
   tool({
     name: "list_projects",
@@ -2160,6 +2229,15 @@ export const TOOLS: ToolDefinition[] = [
 
 const pairingInstructions =
   "On the phone: WhatsApp > Settings > Linked devices > Link a device > Link with phone number instead, then type the code. It expires in about 160 seconds.";
+
+const incomingUrlNote =
+  "Not shown here, because anyone who has it can send to that destination. In the wuapi dashboard, open Integrations, Incoming webhooks and copy it.";
+
+/** An incoming webhook's URL is a credential: tool results never carry it. */
+function withoutUrl<T extends { url?: unknown }>(hook: T): Omit<T, "url"> {
+  const { url: _url, ...rest } = hook;
+  return rest;
+}
 
 const webhookSecretNote =
   "Not shown here. In the wuapi dashboard, open Webhooks, rotate this endpoint's secret to reveal a new one, and store it on your server to verify the Wuapi-Signature header.";

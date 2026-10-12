@@ -151,6 +151,11 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   getWebhookEndpoint: ["get_webhook"],
   updateWebhookEndpoint: ["update_webhook"],
   deleteWebhookEndpoint: ["delete_webhook"],
+  listIncomingWebhooks: ["list_incoming_webhooks"],
+  createIncomingWebhook: ["create_incoming_webhook"],
+  getIncomingWebhook: ["get_incoming_webhook"],
+  updateIncomingWebhook: ["update_incoming_webhook"],
+  deleteIncomingWebhook: ["delete_incoming_webhook"],
 
   // projects
   createProject: ["create_project"],
