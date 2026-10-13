@@ -120,7 +120,7 @@ const idempotencyKey = z
   .max(255)
   .optional()
   .describe("Optional. Reuse the same key when retrying this exact call: within 24 hours wuapi returns the first result instead of doing it twice.");
-const replyToMessageId = z.string().trim().min(1).max(64).optional().describe("A wuapi message id in the same chat to quote (reply to).");
+const replyToMessageId = z.string().trim().min(1).max(64).optional().describe("A wuapi message id in the same chat to quote (reply to). One exception, a private reply: a message someone else wrote in a group can be quoted in the direct chat with its author (`to` is that message's `from`).");
 const mentions = z.array(z.string().trim().min(1).max(200)).max(256).optional().describe("Contact ids to @mention (E.164 or `lid:<digits>`).");
 const confirm = (what: string) =>
   z.literal(true).describe(`Must be true. ${what} Only set it after the user asked for this or agreed to it.`);
