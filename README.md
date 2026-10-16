@@ -125,7 +125,7 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 
 ## Tools
 
-85 tools reach every operation of the REST API, except the two that return a secret and the two steps of an upload through an upload URL (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
+86 tools reach every operation of the REST API, except the two that return a secret and the two steps of an upload through an upload URL (see below). Tools that read are marked `readOnlyHint`. Tools that delete, revoke, reset, block or leave are marked `destructiveHint` and take `confirm: true`, which the model has to set on purpose and your client shows you before the call.
 
 | Area | Tools |
 |---|---|
@@ -133,7 +133,7 @@ The hosted endpoint takes the same options as headers: `Wuapi-Project: <id or ex
 | Accounts | `list_accounts`, `get_account`, `get_account_qr_code`, `create_account`, `request_pairing_code`, `reconnect_account`, `list_proxy_locations`, `update_account`, `unlink_account`, `set_presence`, `set_disappearing_timer`, `reject_call` |
 | Messages | `send_text`, `send_media`, `upload_file`, `send_location`, `send_contact`, `send_poll`, `reply_to_message`, `react_to_message`, `get_message`, `list_messages`, `edit_message`, `delete_message`, `cancel_message`, `vote_in_poll`, `forward_message`, `star_message` |
 | Chats | `list_chats`, `get_chat`, `mark_chat_read`, `send_read_receipts`, `archive_chat`, `pin_chat`, `mute_chat`, `delete_chat`, `manage_labels` |
-| Contacts | `list_contacts`, `get_contact`, `check_numbers`, `lookup_contacts`, `lookup_whatsapp_info`, `manage_block_list` |
+| Contacts | `list_contacts`, `get_contact`, `check_numbers`, `lookup_contacts`, `save_contacts`, `lookup_whatsapp_info`, `manage_block_list` |
 | Profile | `manage_profile`, `manage_favorite_stickers`, `manage_privacy` |
 | Groups | `list_groups`, `get_group`, `create_group`, `add_group_participants`, `remove_group_participants`, `promote_group_participants`, `demote_group_participants`, `get_group_invite_link`, `reset_group_invite_link`, `leave_group`, `manage_group_settings`, `manage_group_joins`, `manage_community` |
 | Channels | `manage_channel` |
@@ -151,6 +151,7 @@ Resources with many small operations are one tool with an `action` argument, so 
 | `unlink_account` | `logout`\*, `delete`\* |
 | `set_presence` | `online`, `offline`, `typing`, `recording`, `paused`, `subscribe` |
 | `manage_labels` | `upsert`, `delete`\*, `label_chat`, `unlabel_chat`, `label_message`, `unlabel_message` |
+| `save_contacts` | `one`, `many`, `backfill_auto_save` |
 | `lookup_whatsapp_info` | `contact_picture`, `business_profile`, `resolve_link`, `bots`, `sticker_pack`, `order` |
 | `manage_block_list` | `list`, `block`\*, `unblock` |
 | `manage_profile` | `update`, `set_picture`, `delete_picture`\*, `get_contact_link`, `reset_contact_link`\* |

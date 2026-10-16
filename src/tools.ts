@@ -455,7 +455,7 @@ export const TOOLS: ToolDefinition[] = [
     title: "Update an account",
     group: "accounts",
     description:
-      "Change an account's settings: rename it, reject incoming calls automatically, turn on and tune its pacing (the anti-ban protections, off by default), choose whether the next link imports recent chats, choose which received media is downloaded right away (the rest on demand), choose the quality its images are sent at, or move its proxy location. Pacing applies from the next send. A proxy location change gives the number a new exit IP and reconnects it; it is refused within 10 minutes of the previous change. Returns the updated account with its pacing.",
+      "Change an account's settings: rename it, reject incoming calls automatically, turn on and tune its pacing (the anti-ban protections, off by default), choose whether the next link imports recent chats, choose which received media is downloaded right away (the rest on demand), choose the quality its images are sent at, save the contacts of new chats on the phone automatically (`contactAutoSave`), or move its proxy location. Pacing applies from the next send. A proxy location change gives the number a new exit IP and reconnects it; it is refused within 10 minutes of the previous change. Returns the updated account with its pacing.",
     inputSchema: z.object({
       accountId,
       name: z.string().trim().min(1).max(100).optional().describe("A name for the account, such as `Front desk`."),
@@ -484,6 +484,20 @@ export const TOOLS: ToolDefinition[] = [
         .describe(
           "What the account's images are re-encoded to before their upload through the number's proxy (proxy traffic). `standard` (default): longest side 1600 px, JPEG, as WhatsApp sends a photo. `hd`: up to 4096 px. `original`: the file as it is.",
         ),
+      contactAutoSave: z
+        .object({
+          enabled: z.boolean().optional().describe("Save the contacts of new direct chats on the phone automatically."),
+          trigger: z
+            .enum(["first_inbound", "any_chat"])
+            .optional()
+            .describe("`first_inbound`: the contact's first message in a new chat. `any_chat`: any new chat, whoever writes first."),
+          nameTemplate: z.string().trim().min(1).max(100).optional().describe("The saved name: `{profileName}` (WhatsApp profile name) and `{phone}` (E.164)."),
+          fallbackName: z.string().trim().min(1).max(100).optional().describe("Used when the template needs a profile name the contact has not set."),
+        })
+        .optional()
+        .describe(
+          "Contact auto-save: only direct chats with a number, never renaming a contact the phone already holds, each contact at most once, at most 200 a day. The given fields change.",
+        ),
       proxyLocation: z
         .object({
           country: z.string().trim().length(2).optional().describe("ISO 3166-1 alpha-2 country code, uppercase. Goes with `city`."),
@@ -496,7 +510,7 @@ export const TOOLS: ToolDefinition[] = [
     annotations: { ...SET, openWorldHint: true },
     run: async (client, a) => {
       const { accountId: target, ...rest } = a;
-      const params = changes(rest, "name, rejectCalls, rejectCallsMessage, pacing, historySync, mediaAutoDownload, imageQuality or proxyLocation");
+      const params = changes(rest, "name, rejectCalls, rejectCallsMessage, pacing, historySync, mediaAutoDownload, imageQuality, contactAutoSave or proxyLocation");
       const loc = a.proxyLocation;
       if (loc) {
         if ((loc.country === undefined) !== (loc.city === undefined)) throw new ToolInputError("`proxyLocation.country` and `proxyLocation.city` go together.");
@@ -1130,6 +1144,53 @@ export const TOOLS: ToolDefinition[] = [
     }),
     annotations: READ_LIVE,
     run: async (client, a) => ok({ items: await client.contacts.lookup(a.accountId, a.contactIds) }),
+  }),
+
+  actionTool({
+    name: "save_contacts",
+    title: "Save contacts on the phone",
+    group: "contacts",
+    description:
+      "Save contacts on the linked phone, in WhatsApp and in the phone's own address book, as if they were saved on the phone. Any number can be saved. Saves are queued (also while the account reconnects): each contact's `phoneSync` says `pending`, then `synced` or `failed` (`not_on_whatsapp`, `account_offline`), and `contact.updated` fires; the phone shows the name about a minute later. Removing a contact is not supported. `backfill_auto_save` queues the contacts of the account's existing direct chats, named with its auto-save templates (update_account `contactAutoSave`), at most 200 a day.",
+    fields: {
+      accountId,
+      contactId,
+      savedName: z.string().trim().min(1).max(100).describe("The name to save the contact under."),
+      firstName: z.string().trim().min(1).max(100).optional().describe("The short name the phone shows. Defaults to the first word of `savedName`."),
+      contacts: z
+        .array(
+          z.object({
+            contactId: z.string().trim().min(1).max(200).describe("E.164 number, or `lid:<digits>` when the address book knows its number."),
+            savedName: z.string().trim().min(1).max(100),
+            firstName: z.string().trim().min(1).max(100).optional(),
+          }),
+        )
+        .min(1)
+        .max(500)
+        .describe("1 to 500 contacts to save."),
+    },
+    actions: (act) => ({
+      one: act({
+        summary: "Save one contact under `savedName`. Returns the contact with its `phoneSync`.",
+        annotations: SET,
+        required: ["accountId", "contactId", "savedName"],
+        optional: ["firstName"],
+        run: async (client, a) =>
+          ok(await client.contacts.update(a.accountId, a.contactId, defined({ savedName: a.savedName, firstName: a.firstName }) as { savedName: string })),
+      }),
+      many: act({
+        summary: "Save up to 500 contacts at once. Returns the batch id and each contact's status.",
+        annotations: SET,
+        required: ["accountId", "contacts"],
+        run: async (client, a) => ok(await client.contacts.saveMany(a.accountId, { contacts: a.contacts })),
+      }),
+      backfill_auto_save: act({
+        summary: "Queue the auto-save of the contacts of the account's existing direct chats.",
+        annotations: SET,
+        required: ["accountId"],
+        run: async (client, a) => ok(await client.contacts.backfillAutoSave(a.accountId)),
+      }),
+    }),
   }),
 
   actionTool({

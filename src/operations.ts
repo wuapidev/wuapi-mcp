@@ -66,6 +66,9 @@ export const OPERATION_TOOLS: Readonly<Record<string, readonly string[]>> = {
   // contacts
   listContacts: ["list_contacts"],
   getContact: ["get_contact"],
+  updateContact: ["save_contacts.one"],
+  saveContacts: ["save_contacts.many"],
+  backfillContactAutoSave: ["save_contacts.backfill_auto_save"],
   checkContacts: ["check_numbers"],
   lookupContacts: ["lookup_contacts"],
   getContactPicture: ["lookup_whatsapp_info.contact_picture"],
