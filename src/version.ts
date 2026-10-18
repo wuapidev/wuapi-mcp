@@ -1,5 +1,5 @@
 /** The package version. Bump it together with package.json (test/version.test.ts checks). */
-export const VERSION = "0.14.0";
+export const VERSION = "0.15.0";
 
 /** The name MCP clients show for this server. */
 export const SERVER_NAME = "wuapi";
